@@ -39,6 +39,55 @@ commit again. To run the hooks on the whole repo:
 pre-commit run --all-files
 ```
 
+## Git workflow
+
+We follow [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow):
+`main` always works, and every change goes through a branch and a Pull Request (PR).
+
+`main` is protected: nobody can push to it directly, and every PR needs one approval
+before it can be merged.
+
+### Step by step
+
+```bash
+# 1. Start from an up-to-date main
+git checkout main
+git pull
+
+# 2. Create a branch for your change
+git checkout -b feat/peak-hour-features
+
+# 3. Work and commit (as many commits as you need)
+git add .
+git commit -m "feat: add peak hour features"
+
+# 4. Push the branch
+git push -u origin feat/peak-hour-features
+
+# 5. Open the PR
+gh pr create --base main --fill
+```
+
+Then:
+
+6. Ask a teammate to review the PR.
+7. If the reviewer asks for changes, commit them on the same branch and `git push` again.
+   The PR updates automatically.
+8. Once the PR is approved and the `pre-commit` check is green, merge it with
+   **Squash and merge** and delete the branch.
+9. Go back to step 1 for your next change.
+
+### Branch names
+
+`type/short-description`, using the same types as the commit messages, in lowercase and
+with hyphens instead of spaces:
+
+```
+feat/data-ingestion
+fix/station-encoding
+docs/ml-canvas
+```
+
 ### Commit messages
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
@@ -60,6 +109,26 @@ feat: add peak hour features
 fix: handle missing station ids
 docs: explain how to download the data
 ```
+
+### Pull Requests
+
+- **Title:** same format as the commit messages (`type: description`). Because PRs are
+  merged with *Squash and merge*, the PR title becomes the commit message in `main`.
+- **Description:** what changed, why, and how to test it. Link the related issue if
+  there is one (`Closes #<issue number>`).
+- **Size:** keep PRs small, focused on a single change. They are easier to review.
+
+### Reviews
+
+Every team member opens at least one PR and reviews at least one PR from a teammate.
+To review, go to the PR's **Files changed** tab, leave comments on specific lines if
+needed, and click **Review changes**:
+
+- **Approve:** the change is ready to merge.
+- **Request changes:** something must be fixed first. Explain what and why.
+- **Comment:** questions or suggestions that don't block the merge.
+
+All review conversations must be resolved before merging.
 
 ## Project Organization
 
