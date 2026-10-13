@@ -1,6 +1,7 @@
 loguru
 mkdocs
 pip
+pre-commit
 pytest
 python-dotenv
 ruff

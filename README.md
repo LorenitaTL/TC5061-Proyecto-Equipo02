@@ -6,6 +6,61 @@
 
 Mi Bici ML
 
+## Setup
+
+The project requires Python 3.12. We use [uv](https://docs.astral.sh/uv/) to create the
+virtual environment (install it with `brew install uv` on macOS, or see the
+[installation guide](https://docs.astral.sh/uv/getting-started/installation/)).
+
+```bash
+make create_environment
+source .venv/bin/activate
+make requirements
+```
+
+This installs the dependencies and the [pre-commit](https://pre-commit.com/) git hooks
+(`make setup-hooks` installs only the hooks).
+
+Activate the environment with `source .venv/bin/activate` every time you open a new
+terminal to work on the project. On Windows, use `.venv\Scripts\activate` instead.
+
+### Pre-commit
+
+On every `git commit`, the hooks in `.pre-commit-config.yaml` run on the staged files:
+
+- `ruff` lints (with `--fix`) and formats the code, using the config in `pyproject.toml`.
+- Generic checks: trailing whitespace, end of file, YAML/TOML syntax, merge conflict
+  markers, private keys, and files larger than 1 MB.
+
+If a hook modifies files, the commit is aborted. Review the changes, `git add` them, and
+commit again. To run the hooks on the whole repo:
+
+```bash
+pre-commit run --all-files
+```
+
+### Commit messages
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+`type: description`. A hook rejects the commit if the message doesn't match.
+
+| Type       | Use it for                                  |
+|------------|---------------------------------------------|
+| `feat`     | New functionality                           |
+| `fix`      | Bug fix                                     |
+| `docs`     | Documentation only                          |
+| `test`     | Adding or changing tests                    |
+| `refactor` | Code change that doesn't change behavior    |
+| `chore`    | Anything else (dependencies, config, etc.)  |
+
+Examples:
+
+```
+feat: add peak hour features
+fix: handle missing station ids
+docs: explain how to download the data
+```
+
 ## Project Organization
 
 ```
@@ -26,7 +81,7 @@ Mi Bici ML
 │                         the creator's initials, and a short `-` delimited description, e.g.
 │                         `1.0-jqp-initial-data-exploration`.
 │
-├── pyproject.toml     <- Project configuration file with package metadata for 
+├── pyproject.toml     <- Project configuration file with package metadata for
 │                         mi_bici and configuration for tools like black
 │
 ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
@@ -49,13 +104,12 @@ Mi Bici ML
     │
     ├── features.py             <- Code to create features for modeling
     │
-    ├── modeling                
-    │   ├── __init__.py 
-    │   ├── predict.py          <- Code to run model inference with trained models          
+    ├── modeling
+    │   ├── __init__.py
+    │   ├── predict.py          <- Code to run model inference with trained models
     │   └── train.py            <- Code to train models
     │
     └── plots.py                <- Code to create visualizations
 ```
 
 --------
-

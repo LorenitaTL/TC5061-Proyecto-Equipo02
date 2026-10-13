@@ -29,4 +29,3 @@ extend-select = ["I"]  # Add import sorting
 [tool.ruff.lint.isort]
 known-first-party = ["mi_bici"]
 force-sort-within-sections = true
-
