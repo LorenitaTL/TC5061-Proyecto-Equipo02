@@ -22,7 +22,23 @@ This installs the dependencies and the [pre-commit](https://pre-commit.com/) git
 (`make setup-hooks` installs only the hooks).
 
 Activate the environment with `source .venv/bin/activate` every time you open a new
-terminal to work on the project. On Windows, use `.venv\Scripts\activate` instead.
+terminal to work on the project.
+
+### Windows (without `make` or `uv`)
+
+If you don't have `make` or `uv`, create the environment with the standard library's
+`venv` and `pip`. Make sure Python 3.12 is installed (`py -3.12 --version`):
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+pre-commit install
+```
+
+Activate the environment with `.venv\Scripts\activate` every time you open a new
+terminal. Run the tests with `python -m pytest tests` instead of `make test`.
 
 ### Pre-commit
 
