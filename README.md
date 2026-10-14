@@ -47,6 +47,8 @@ On every `git commit`, the hooks in `.pre-commit-config.yaml` run on the staged 
 - `ruff` lints (with `--fix`) and formats the code, using the config in `pyproject.toml`.
 - Generic checks: trailing whitespace, end of file, YAML/TOML syntax, merge conflict
   markers, private keys, and files larger than 1 MB.
+- `pytest` runs the test suite when the commit includes Python files. It uses the
+  Python of the active environment, so activate `.venv` before committing.
 
 If a hook modifies files, the commit is aborted. Review the changes, `git add` them, and
 commit again. To run the hooks on the whole repo:
