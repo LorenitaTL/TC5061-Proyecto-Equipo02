@@ -38,7 +38,15 @@ pre-commit install
 ```
 
 Activate the environment with `.venv\Scripts\activate` every time you open a new
-terminal. Run the tests with `python -m pytest tests` instead of `make test`.
+terminal. Without `make`, run the equivalent commands directly:
+
+| `make` target   | Equivalent command                                                                  |
+| --------------- | ----------------------------------------------------------------------------------- |
+| `make test`     | `python -m pytest tests`                                                            |
+| `make lint`     | `ruff format --check; ruff check`                                                   |
+| `make format`   | `ruff check --fix; ruff format`                                                     |
+| `make data`     | `python mi_bici/dataset.py`                                                         |
+| `make clean`    | `Get-ChildItem -Recurse -Directory -Filter __pycache__ \| Remove-Item -Recurse -Force` |
 
 ### Pre-commit
 
@@ -91,8 +99,8 @@ Then:
 6. Ask a teammate to review the PR.
 7. If the reviewer asks for changes, commit them on the same branch and `git push` again.
    The PR updates automatically.
-8. Once the PR is approved and the `pre-commit` check is green, merge it with
-   **Squash and merge** and delete the branch.
+8. Once the PR is approved and the `pre-commit` and `tests` checks are green, merge it
+   with **Squash and merge** and delete the branch.
 9. Go back to step 1 for your next change.
 
 ### Branch names

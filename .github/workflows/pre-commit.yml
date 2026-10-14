@@ -23,3 +23,21 @@ jobs:
       - run: pip install -r requirements.txt
 
       - run: pre-commit run --all-files --show-diff-on-failure
+
+  # pre-commit already runs pytest on Linux; this checks the other OSes the team uses
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python -m pytest tests
