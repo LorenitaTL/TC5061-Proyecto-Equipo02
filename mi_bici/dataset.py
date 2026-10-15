@@ -1,17 +1,131 @@
-import pandas as pd
-import subprocess
+from datetime import UTC, datetime
+import hashlib
+from html.parser import HTMLParser
+import json
 from pathlib import Path
+import re
+import subprocess
+from urllib.parse import urljoin
 
-import typer
 from loguru import logger
+import pandas as pd
+import typer
 
 from mi_bici.config import (
+    DATA_END_MONTH,
+    DATA_START_MONTH,
     EXTERNAL_DATA_DIR,
     PROCESSED_DATA_DIR,
-    RAW_DATA_DIR
+    RAW_DATA_DIR,
+    REFERENCES_DIR,
+    STATIONS_FILENAME,
 )
 
 app = typer.Typer()
+
+PORTAL_URL = "https://mibici.net/es/datos-abiertos/"
+
+
+class CSVLinkParser(HTMLParser):
+    """Extrae enlaces CSV de la página de datos abiertos."""
+
+    def __init__(self):
+        super().__init__()
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "a":
+            return
+
+        attributes = dict(attrs)
+        href = attributes.get("href", "")
+
+        if ".csv" in href.lower():
+            self.links.append(urljoin(PORTAL_URL, href))
+
+
+def discover_sources(
+    start_month: str,
+    end_month: str,
+) -> dict[str, str]:
+    """
+    Descubre los archivos mensuales de MiBici.
+
+    Parameters
+    ----------
+    start_month : str
+        Mes inicial en formato YYYY-MM.
+    end_month : str
+        Mes final en formato YYYY-MM.
+
+    Returns
+    -------
+    dict[str, str]
+        Diccionario con periodo y URL de descarga.
+    """
+    response = subprocess.run(
+        [
+            "curl.exe",
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--max-time", "60",
+            PORTAL_URL,
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+    html = response.stdout.decode("utf-8-sig")
+
+    parser = CSVLinkParser()
+    parser.feed(html)
+
+    sources = {}
+
+    for url in parser.links:
+        match = re.search(
+            r"datos_abiertos_(\d{4})_(\d{2})\.csv",
+            url,
+            flags=re.IGNORECASE,
+        )
+
+        if not match:
+            continue
+
+        year, month = map(int, match.groups())
+
+        if not 1 <= month <= 12:
+            continue
+
+        period = f"{year:04d}-{month:02d}"
+
+        if start_month <= period <= end_month:
+            if period in sources and sources[period] != url:
+                raise ValueError(
+                    f"Se encontraron URL diferentes para {period}"
+                )
+            sources[period] = url
+
+    expected = pd.period_range(
+        start=start_month,
+        end=end_month,
+        freq="M",
+    ).strftime("%Y-%m").tolist()
+
+    missing = sorted(set(expected) - set(sources))
+
+    if missing:
+        raise RuntimeError(
+            f"No se encontraron los meses: {missing}"
+        )
+
+    logger.success(
+        f"Fuentes identificadas: {len(sources)} meses"
+    )
+
+    return dict(sorted(sources.items()))
 
 def download_file(url: str, destination: Path) -> Path:
     """
@@ -277,6 +391,44 @@ def normalize_stations(df: pd.DataFrame) -> pd.DataFrame:
     return stations
 
 
+def process_stations() -> dict:
+    """
+    Descarga y normaliza el catálogo de estaciones.
+    """
+    catalog_url = (
+        "https://mibici.net/site/assets/files/1118/"
+        "nomenclatura_2026_09.csv"
+    )
+
+    raw_path = EXTERNAL_DATA_DIR / STATIONS_FILENAME
+    processed_path = PROCESSED_DATA_DIR / "estaciones.parquet"
+
+    download_file(catalog_url, raw_path)
+
+    raw_df, encoding = read_csv_robust(raw_path)
+    stations = normalize_stations(raw_df)
+
+    save_parquet(stations, processed_path)
+
+    result = {
+        "source_url": catalog_url,
+        "encoding": encoding,
+        "raw_rows": len(raw_df),
+        "processed_rows": len(stations),
+        "invalid_capacity": int(
+            (~stations["capacity_valid"]).sum()
+        ),
+        "invalid_coordinates": int(
+            (~stations["coordinates_valid"]).sum()
+        ),
+    }
+
+    logger.success(
+        f"Catálogo procesado: {len(stations):,} estaciones"
+    )
+
+    return result
+
 def save_parquet(
     df: pd.DataFrame,
     destination: Path,
@@ -327,64 +479,378 @@ def save_parquet(
         )
         raise
 
-@app.command()
-def main():
-    # Rutas de los archivos originales
-    trips_path = RAW_DATA_DIR / "datos_abiertos_2026_01.csv"
-    stations_path = (
-        EXTERNAL_DATA_DIR / "nomenclatura_2026_09.csv"
+
+def process_month(period: str, url: str) -> dict:
+    """
+    Descarga, normaliza y guarda los viajes de un mes.
+
+    Procesa cada archivo de manera independiente para
+    evitar mantener varios meses en memoria.
+
+    Parameters
+    ----------
+    period : str
+        Mes de los viajes en formato YYYY-MM.
+    url : str
+        URL oficial del archivo CSV.
+
+    Returns
+    -------
+    dict
+        Metadatos y resultados de calidad del periodo.
+    """
+    year, month = period.split("_") if "_" in period else period.split("-")
+
+    filename = f"datos_abiertos_{year}_{month}.csv"
+    raw_path = RAW_DATA_DIR / filename
+
+    output_path = (
+        PROCESSED_DATA_DIR / f"viajes_{year}_{month}.parquet"
     )
 
-    # Lectura robusta
-    trips_raw, trips_encoding = read_csv_robust(trips_path)
-    stations_raw, stations_encoding = read_csv_robust(stations_path)
+    logger.info(f"Iniciando procesamiento del mes {period}")
 
-    # Normalización
-    trips = normalize_trips(trips_raw)
-    stations = normalize_stations(stations_raw)
+    # 1. Descargar archivo original
+    download_file(url, raw_path)
 
-    # Guardar los datos procesados
-    trips_output = (
-        PROCESSED_DATA_DIR / "viajes_2026_01.parquet"
+    # 2. Leer con codificación compatible
+    raw_df, encoding = read_csv_robust(raw_path)
+
+    # 3. Normalizar columnas y tipos
+    trips = normalize_trips(raw_df)
+
+    # 4. Validar cobertura temporal
+    period_observed = trips["started_at"].dt.strftime("%Y-%m")
+
+    outside_period = (
+        period_observed.notna()
+        & (period_observed != period)
+    ).sum()
+
+    # 5. Exportar a Parquet
+    save_parquet(trips, output_path)
+
+    # 6. Resumir métricas de calidad
+    result = {
+        "period": period,
+        "source_url": url,
+        "encoding": encoding,
+        "raw_rows": len(raw_df),
+        "processed_rows": len(trips),
+        "invalid_start": int(trips["invalid_start"].sum()),
+        "invalid_end": int(trips["invalid_end"].sum()),
+        "negative_duration": int(
+            trips["negative_duration"].sum()
+        ),
+        "zero_duration": int(trips["zero_duration"].sum()),
+        "duplicate_trip_id": int(
+            trips["duplicate_trip_id"].sum()
+        ),
+        "outside_period": int(outside_period),
+        "output_file": output_path.name,
+    }
+
+    logger.success(
+        f"Mes {period} procesado: {len(trips):,} registros"
     )
 
-    stations_output = (
+    # Liberar referencias antes del siguiente mes
+    del raw_df, trips
+
+    return result
+
+
+def calculate_sha256(
+    file_path: Path,
+    chunk_size: int = 1024 * 1024,
+) -> str:
+    """
+    Calcula el hash SHA-256 de un archivo.
+
+    Lee el archivo en bloques para evitar cargarlo
+    completamente en memoria.
+    """
+    sha256 = hashlib.sha256()
+
+    with file_path.open("rb") as file:
+        while chunk := file.read(chunk_size):
+            sha256.update(chunk)
+
+    return sha256.hexdigest()
+
+
+def generate_manifest(
+    summary_path: Path,
+    manifest_path: Path,
+    stations_filename: str,
+) -> dict:
+    """
+    Construye el manifiesto de datos a partir
+    de archivos ya procesados.
+    """
+    summary = pd.read_csv(summary_path)
+
+    records = []
+
+    for _, row in summary.iterrows():
+        period = str(row["period"])
+        year, month = period.split("-")
+
+        raw_filename = (
+            f"datos_abiertos_{year}_{month}.csv"
+        )
+
+        raw_path = RAW_DATA_DIR / raw_filename
+        processed_path = (
+            PROCESSED_DATA_DIR
+            / f"viajes_{year}_{month}.parquet"
+        )
+
+        if not raw_path.is_file():
+            raise FileNotFoundError(raw_path)
+
+        if not processed_path.is_file():
+            raise FileNotFoundError(processed_path)
+
+        records.append(
+            {
+                "period": period,
+                "source_url": str(row["source_url"]),
+                "encoding": str(row["encoding"]),
+                "rows": int(row["processed_rows"]),
+                "raw_file": raw_filename,
+                "raw_bytes": raw_path.stat().st_size,
+                "raw_sha256": calculate_sha256(raw_path),
+                "processed_file": processed_path.name,
+                "processed_bytes": (
+                    processed_path.stat().st_size
+                ),
+                "processed_sha256": calculate_sha256(
+                    processed_path
+                ),
+            }
+        )
+
+        logger.info(f"Hashes calculados: {period}")
+
+    stations_raw = EXTERNAL_DATA_DIR / stations_filename
+    stations_processed = (
         PROCESSED_DATA_DIR / "estaciones.parquet"
     )
 
-    save_parquet(trips, trips_output)
-    save_parquet(stations, stations_output)
+    for path in [stations_raw, stations_processed]:
+        if not path.is_file():
+            raise FileNotFoundError(path)
 
-    print("\n--- RESULTADOS ---")
-    print(f"Viajes: {len(trips):,}")
-    print(f"Estaciones: {len(stations):,}")
-    print(f"Codificación viajes: {trips_encoding}")
-    print(f"Codificación estaciones: {stations_encoding}")
+    manifest = {
+        "dataset": "MiBici Guadalajara",
+        "source": "Portal de datos abiertos MiBici",
+        "period_start": str(summary["period"].min()),
+        "period_end": str(summary["period"].max()),
+        "generated_at_utc": (
+            datetime.now(UTC).isoformat()
+        ),
+        "total_months": len(records),
+        "total_trips": int(
+            summary["processed_rows"].sum()
+        ),
+        "monthly_files": records,
+        "stations": {
+            "source_file": stations_raw.name,
+            "source_sha256": calculate_sha256(
+                stations_raw
+            ),
+            "processed_file": stations_processed.name,
+            "processed_sha256": calculate_sha256(
+                stations_processed
+            ),
+            "catalog_period": "2026-09",
+            "limitation": (
+                "La capacidad registrada en el catálogo "
+                "no necesariamente representa la capacidad "
+                "histórica durante 2025-01 a 2026-06."
+            ),
+        },
+    }
 
-    print("\n--- CALIDAD DE ESTACIONES ---")
-    print(
-        stations[
-            [
-                "capacity_valid",
-                "coordinates_valid",
-                "duplicate_station_id",
-            ]
-        ].value_counts(dropna=False)
+    manifest_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
 
-    print("\n--- CORRESPONDENCIA DE ESTACIONES ---")
-    valid_ids = set(stations["station_id"].dropna())
+    # Escritura temporal para no dejar JSON incompleto
+    temp_path = manifest_path.with_suffix(".json.part")
 
-    origins_missing = (
-        ~trips["origin_station_id"].isin(valid_ids)
-    ).sum()
+    with temp_path.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+            manifest,
+            file,
+            ensure_ascii=False,
+            indent=2,
+        )
 
-    destinations_missing = (
-        ~trips["destination_station_id"].isin(valid_ids)
-    ).sum()
+    temp_path.replace(manifest_path)
 
-    print(f"Viajes con origen sin catálogo: {origins_missing:,}")
-    print(f"Viajes con destino sin catálogo: {destinations_missing:,}")
+    logger.success(
+        f"Manifiesto generado: {manifest_path}"
+    )
+
+    return manifest
+
+
+def verify_manifest(manifest_path: Path) -> bool:
+    """Verifica integridad de archivos contra hashes registrados."""
+    with manifest_path.open("r", encoding="utf-8") as file:
+        manifest = json.load(file)
+
+    errors = []
+
+    def verify_file(path: Path, expected_hash: str):
+        if not path.is_file():
+            errors.append(f"Archivo faltante: {path}")
+            return
+
+        actual_hash = calculate_sha256(path)
+
+        if actual_hash != expected_hash:
+            errors.append(f"Hash diferente: {path}")
+
+    for record in manifest["monthly_files"]:
+        raw_path = RAW_DATA_DIR / record["raw_file"]
+        processed_path = (
+            PROCESSED_DATA_DIR / record["processed_file"]
+        )
+
+        verify_file(raw_path, record["raw_sha256"])
+        verify_file(
+            processed_path,
+            record["processed_sha256"],
+        )
+
+    stations = manifest["stations"]
+
+    verify_file(
+        EXTERNAL_DATA_DIR / stations["source_file"],
+        stations["source_sha256"],
+    )
+
+    verify_file(
+        PROCESSED_DATA_DIR / stations["processed_file"],
+        stations["processed_sha256"],
+    )
+
+    if errors:
+        for error in errors:
+            logger.error(error)
+
+        raise RuntimeError(
+            f"Falló la verificación de {len(errors)} archivo(s)."
+        )
+
+    logger.success(
+        "Integridad verificada: todos los archivos "
+        "coinciden con el manifiesto."
+    )
+
+    return True
+
+@app.command()
+def ingest(
+    start_month: str = typer.Option(
+        DATA_START_MONTH,
+        help="Mes inicial en formato YYYY-MM",
+    ),
+    end_month: str = typer.Option(
+        DATA_END_MONTH,
+        help="Mes final en formato YYYY-MM",
+    ),
+):
+    """
+    Ejecuta la ingesta de viajes de MiBici para
+    un rango mensual configurable.
+    """
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", start_month):
+        raise typer.BadParameter(
+            "start_month debe tener formato YYYY-MM"
+        )
+
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", end_month):
+        raise typer.BadParameter(
+            "end_month debe tener formato YYYY-MM"
+        )
+
+    if start_month > end_month:
+        raise typer.BadParameter(
+            "El mes inicial no puede ser posterior al final"
+        )
+
+    logger.info("Preparando catálogo de estaciones")
+    process_stations()
+
+    sources = discover_sources(start_month, end_month)
+
+    results = []
+
+    for period, url in sources.items():
+        result = process_month(period, url)
+        results.append(result)
+
+    summary = pd.DataFrame(results)
+
+    summary_path = (
+        PROCESSED_DATA_DIR
+        / f"resumen_ingesta_{start_month}_{end_month}.csv"
+    )
+
+    summary.to_csv(
+        summary_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    logger.success(
+        f"Resumen de ingesta guardado: {summary_path.name}"
+        )
+
+    print("\n--- RESUMEN DE INGESTA ---")
+    print(summary.to_string(index=False))
+
+    logger.success(
+        f"Ingesta completada para {len(results)} meses"
+    )
+
+@app.command("manifest")
+def manifest_command(
+    start_month: str = typer.Option(DATA_START_MONTH),
+    end_month: str = typer.Option(DATA_END_MONTH),
+):
+    """Genera el manifiesto de los datos ya procesados."""
+    summary_path = (
+        PROCESSED_DATA_DIR
+        / f"resumen_ingesta_{start_month}_{end_month}.csv"
+    )
+
+    manifest_path = (
+        REFERENCES_DIR / "data_manifest.json"
+    )
+
+    generate_manifest(
+        summary_path=summary_path,
+        manifest_path=manifest_path,
+        stations_filename=STATIONS_FILENAME,
+    )
+
+@app.command("verify")
+def verify_command():
+    """Verifica archivos contra los hashes registrados."""
+    manifest_path = (
+        REFERENCES_DIR / "data_manifest.json"
+    )
+
+    verify_manifest(manifest_path)
 
 if __name__ == "__main__":
     app()

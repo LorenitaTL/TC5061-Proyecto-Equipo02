@@ -34,7 +34,7 @@ except ModuleNotFoundError:
 # MiBici: configuración de ingesta
 MIBICI_BASE_URL = "https://mibici.net"
 
-DATA_START_MONTH = "2026-01"
+DATA_START_MONTH = "2025-01"
 DATA_END_MONTH = "2026-06"
 
 STATIONS_FILENAME = "nomenclatura_2026_09.csv"
