@@ -1,4 +1,30 @@
+"""
+Entrenamiento del modelo P2: clasificación de riesgo operacional.
+
+Pregunta de negocio
+-------------------
+¿Una estación presentará un nivel alto de desequilibrio operacional
+durante la siguiente hora?
+
+Objetivo
+--------
+Entrenar un modelo de clasificación binaria que permita identificar
+estaciones con alto desequilibrio operacional durante la siguiente hora.
+
+La unidad de análisis es estación-hora.
+
+El modelo utiliza información disponible al finalizar la hora t para
+predecir el riesgo durante la hora t+1.
+
+El riesgo se define mediante un umbral correspondiente al percentil 80
+del desequilibrio operacional normalizado. El umbral se calcula
+exclusivamente utilizando el conjunto de entrenamiento para evitar
+fuga de información.
+"""
+
 from pathlib import Path
+import hashlib
+import subprocess
 
 import joblib
 import mlflow
@@ -7,6 +33,7 @@ import numpy as np
 import pandas as pd
 import typer
 from loguru import logger
+
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -19,27 +46,54 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from mi_bici.config import PROCESSED_DATA_DIR, PROJ_ROOT
+from mi_bici.config import (
+    IMPUTER_STRATEGY,
+    LOGISTIC_CLASS_WEIGHT,
+    LOGISTIC_MAX_ITER,
+    LOGISTIC_SOLVER,
+    PROCESSED_DATA_DIR,
+    PROJ_ROOT,
+    RANDOM_STATE,
+    RISK_PERCENTILE,
+    TEST_FRACTION,
+    TRAIN_FRACTION,
+    VALIDATION_FRACTION,
+)
+
 
 app = typer.Typer()
 
+
 # ---------------------------------------------------------
-# Paths
+# Rutas
 # ---------------------------------------------------------
 
 MODEL_DIR = PROJ_ROOT / "models"
+
 MODEL_PATH = MODEL_DIR / "p2_risk_model.joblib"
 METRICS_PATH = MODEL_DIR / "p2_metrics.csv"
 THRESHOLD_PATH = MODEL_DIR / "p2_threshold.txt"
 
+
 # ---------------------------------------------------------
-# MLflow
+# Configuración de MLflow
 # ---------------------------------------------------------
 
 EXPERIMENT_NAME = "P2-operational-risk"
 
+
 # ---------------------------------------------------------
-# Features
+# Pregunta de negocio
+# ---------------------------------------------------------
+
+BUSINESS_QUESTION = (
+    "¿Una estación presentará un nivel alto de desequilibrio "
+    "operacional durante la siguiente hora?"
+)
+
+
+# ---------------------------------------------------------
+# Variables utilizadas por el modelo
 # ---------------------------------------------------------
 
 FEATURE_COLUMNS = [
@@ -76,17 +130,96 @@ FEATURE_COLUMNS = [
 ]
 
 
-def load_features(input_path: Path) -> pd.DataFrame:
-    """Carga las features generadas para P2."""
+# ---------------------------------------------------------
+# Funciones auxiliares para reproducibilidad
+# ---------------------------------------------------------
+
+
+def get_git_commit() -> str:
+    """
+    Obtiene el commit de Git correspondiente al código utilizado.
+
+    Esto permite relacionar un experimento de MLflow con la versión
+    exacta del código que produjo el modelo.
+    """
+
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "HEAD",
+            ],
+            cwd=PROJ_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        return result.stdout.strip()
+
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+    ):
+        return "unknown"
+
+
+def calculate_file_hash(
+    path: Path,
+) -> str:
+    """
+    Calcula el hash SHA-256 de un archivo.
+
+    Se utiliza como identificador de la versión exacta del archivo
+    de datos utilizado para entrenar el modelo.
+    """
+
+    sha256 = hashlib.sha256()
+
+    with path.open("rb") as file:
+
+        for chunk in iter(
+            lambda: file.read(1024 * 1024),
+            b"",
+        ):
+            sha256.update(chunk)
+
+    return sha256.hexdigest()
+
+
+# ---------------------------------------------------------
+# Carga de datos
+# ---------------------------------------------------------
+
+
+def load_features(
+    input_path: Path,
+) -> pd.DataFrame:
+    """
+    Carga las características generadas para P2.
+
+    También valida que exista la información necesaria para construir
+    el objetivo y realizar la división temporal.
+
+    Los datos se ordenan cronológicamente porque P2 es un problema de
+    predicción temporal y no se debe mezclar información del futuro
+    con información del pasado.
+    """
 
     if not input_path.is_file():
         raise FileNotFoundError(
-            f"No se encontró el archivo de features: {input_path}"
+            f"No se encontró el archivo de features: "
+            f"{input_path}"
         )
 
-    logger.info(f"Leyendo {input_path.name}")
+    logger.info(
+        f"Leyendo {input_path.name}"
+    )
 
-    df = pd.read_parquet(input_path)
+    df = pd.read_parquet(
+        input_path
+    )
 
     df["hour"] = pd.to_datetime(
         df["hour"],
@@ -100,21 +233,51 @@ def load_features(input_path: Path) -> pd.DataFrame:
         ]
     ).copy()
 
-    df = df.sort_values("hour").reset_index(drop=True)
+    df = df.sort_values(
+        "hour"
+    ).reset_index(
+        drop=True
+    )
 
     logger.success(
-        f"Observaciones cargadas: {len(df):,}"
+        f"Observaciones cargadas: "
+        f"{len(df):,}"
     )
 
     return df
 
 
+# ---------------------------------------------------------
+# División temporal
+# ---------------------------------------------------------
+
+
 def temporal_split(
     df: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+]:
     """
-    Divide los datos cronológicamente:
-    70% train, 15% validation, 15% test.
+    Divide los datos respetando el orden cronológico.
+
+    Distribución:
+        70 % entrenamiento
+        15 % validación
+        15 % prueba
+
+    Justificación
+    -------------
+    En P2 no se utiliza una división aleatoria porque eso podría permitir
+    que información de periodos futuros termine en el conjunto de
+    entrenamiento.
+
+    La división temporal simula mejor el escenario real:
+
+        pasado → entrenamiento
+        periodo posterior → validación
+        periodo más reciente → prueba
     """
 
     unique_hours = np.sort(
@@ -122,14 +285,16 @@ def temporal_split(
     )
 
     train_end = int(
-        len(unique_hours) * 0.70
+        len(unique_hours) * TRAIN_FRACTION
     )
 
     validation_end = int(
-        len(unique_hours) * 0.85
+        len(unique_hours) * (TRAIN_FRACTION + VALIDATION_FRACTION)
     )
 
-    train_hours = unique_hours[:train_end]
+    train_hours = unique_hours[
+        :train_end
+    ]
 
     validation_hours = unique_hours[
         train_end:validation_end
@@ -153,31 +318,62 @@ def temporal_split(
 
     logger.info(
         f"Train: {len(train):,} observaciones "
-        f"({train['hour'].min()} → {train['hour'].max()})"
+        f"({train['hour'].min()} → "
+        f"{train['hour'].max()})"
     )
 
     logger.info(
         f"Validation: {len(validation):,} observaciones "
-        f"({validation['hour'].min()} → {validation['hour'].max()})"
+        f"({validation['hour'].min()} → "
+        f"{validation['hour'].max()})"
     )
 
     logger.info(
         f"Test: {len(test):,} observaciones "
-        f"({test['hour'].min()} → {test['hour'].max()})"
+        f"({test['hour'].min()} → "
+        f"{test['hour'].max()})"
     )
 
-    return train, validation, test
+    return (
+        train,
+        validation,
+        test,
+    )
+
+
+# ---------------------------------------------------------
+# Creación de la etiqueta
+# ---------------------------------------------------------
 
 
 def create_risk_label(
     df: pd.DataFrame,
     threshold: float,
 ) -> pd.Series:
-    """Crea Risk=1 si el desequilibrio supera el umbral."""
+    """
+    Crea la etiqueta binaria Risk.
+
+    Risk = 1
+        Cuando el desequilibrio de la siguiente hora es igual o superior
+        al umbral definido.
+
+    Risk = 0
+        Cuando está por debajo del umbral.
+
+    El umbral se calcula únicamente con TRAIN antes de llamar a esta
+    función para validation y test. Esto evita utilizar información
+    futura para definir la etiqueta.
+    """
 
     return (
-        df["target_imbalance_ratio"] >= threshold
+        df["target_imbalance_ratio"]
+        >= threshold
     ).astype(int)
+
+
+# ---------------------------------------------------------
+# Evaluación
+# ---------------------------------------------------------
 
 
 def evaluate_model(
@@ -186,8 +382,36 @@ def evaluate_model(
     y,
     dataset_name: str,
 ) -> dict:
+    """
+    Calcula las métricas del modelo para un conjunto de datos.
 
-    probabilities = model.predict_proba(X)[:, 1]
+    Métricas
+    --------
+    accuracy
+        Proporción de predicciones correctas.
+
+    precision
+        Proporción de estaciones clasificadas como de alto riesgo que
+        realmente pertenecen a esa categoría.
+
+    recall
+        Proporción de estaciones de alto riesgo que el modelo logra
+        identificar correctamente.
+
+    f1
+        Media armónica entre precision y recall.
+
+    roc_auc
+        Capacidad del modelo para distinguir entre las dos clases
+        considerando diferentes umbrales.
+
+    Para P2, Recall es la métrica principal porque perder una estación
+    realmente riesgosa puede significar no intervenirla a tiempo.
+    """
+
+    probabilities = model.predict_proba(
+        X
+    )[:, 1]
 
     predictions = (
         probabilities >= 0.5
@@ -230,6 +454,11 @@ def evaluate_model(
     return metrics
 
 
+# ---------------------------------------------------------
+# Entrenamiento
+# ---------------------------------------------------------
+
+
 @app.command()
 def main(
     input_path: Path = (
@@ -238,9 +467,20 @@ def main(
     ),
 ):
     """
-    Entrena el modelo de clasificación
-    de riesgo operacional P2 y registra
-    el experimento en MLflow.
+    Entrena el modelo de clasificación de riesgo operacional P2.
+
+    Además de generar los archivos locales del modelo, registra en MLflow:
+
+    - parámetros del experimento;
+    - características del conjunto de datos;
+    - versión de los datos;
+    - commit de Git;
+    - pregunta de negocio;
+    - métricas de entrenamiento, validación y prueba;
+    - archivos generados;
+    - modelo entrenado.
+
+    De esta forma el experimento puede ser reproducido y auditado.
     """
 
     logger.info(
@@ -248,54 +488,91 @@ def main(
     )
 
     # -----------------------------------------------------
-    # 1. Configurar MLflow
+    # 1. Configuración de MLflow
     # -----------------------------------------------------
 
     mlflow.set_experiment(
         EXPERIMENT_NAME
     )
 
-    with mlflow.start_run(run_name="baseline_all_features") as run:
+    git_commit = get_git_commit()
 
-        mlflow.set_tags({
-            "team": "Equipo02",
-            "question": "P2",
-            
-        })
+    data_version = calculate_file_hash(
+        input_path
+    )
+
+    with mlflow.start_run(
+        run_name=(
+            "P2-logistic-regression-baseline"
+        )
+    ) as run:
+
+        # -------------------------------------------------
+        # Tags de trazabilidad
+        # -------------------------------------------------
+
+        mlflow.set_tags(
+            {
+                "team": "Equipo02",
+                "project": "MiBici",
+                "task": "P2",
+                "question": BUSINESS_QUESTION,
+                "git_commit": git_commit,
+                "data_version": data_version,
+                "prediction_horizon": "1 hour",
+                "unit_of_analysis": "station-hour",
+            }
+        )
 
         logger.info(
-            f"MLflow Run ID: {run.info.run_id}"
+            f"MLflow Run ID: "
+            f"{run.info.run_id}"
         )
 
         # -------------------------------------------------
-        # 2. Cargar features
+        # 2. Cargar datos
         # -------------------------------------------------
 
         df = load_features(
             input_path
         )
 
-        # -------------------------------------------------
-        # 3. Split temporal
-        # -------------------------------------------------
+        # El rango temporal real de los datos utilizados se registra
+        # después de cargar y validar el archivo.
+        data_start = (
+            df["hour"].min()
+            .isoformat()
+        )
 
-        train, validation, test = (
-            temporal_split(df)
+        data_end = (
+            df["hour"].max()
+            .isoformat()
         )
 
         # -------------------------------------------------
-        # 4. Threshold P80 SOLO usando train
+        # 3. División temporal
+        # -------------------------------------------------
+
+        (
+            train,
+            validation,
+            test,
+        ) = temporal_split(df)
+
+        # -------------------------------------------------
+        # 4. Umbral P80 calculado SOLO con train
         # -------------------------------------------------
 
         risk_threshold = (
             train[
                 "target_imbalance_ratio"
-            ].quantile(0.80)
+            ].quantile(RISK_PERCENTILE)
         )
 
         logger.info(
             "Umbral de riesgo P80 calculado "
-            f"sobre TRAIN: {risk_threshold:.6f}"
+            f"sobre TRAIN: "
+            f"{risk_threshold:.6f}"
         )
 
         train["Risk"] = (
@@ -320,47 +597,75 @@ def main(
         )
 
         # -------------------------------------------------
-        # 5. Log parámetros del experimento
+        # 5. Registrar parámetros
         # -------------------------------------------------
 
         mlflow.log_params(
             {
-                "model": "LogisticRegression",
-                "class_weight": "balanced",
-                "max_iter": 1000,
-                "solver": "lbfgs",
-                "risk_percentile": 0.80,
-                "train_fraction": 0.70,
-                "validation_fraction": 0.15,
-                "test_fraction": 0.15,
+                # Modelo
+                "model": (
+                    "LogisticRegression"
+                ),
+                "class_weight": LOGISTIC_CLASS_WEIGHT,
+                "max_iter": LOGISTIC_MAX_ITER,
+                "solver": LOGISTIC_SOLVER,
+                "random_state": RANDOM_STATE,
+
+                # Preprocesamiento
+                "imputer_strategy": IMPUTER_STRATEGY,
+                "scaler": "StandardScaler",
+
+                # Definición del problema
+                "risk_percentile": RISK_PERCENTILE,
+                "prediction_horizon": "1h",
+
+                # División temporal
+                "train_fraction": TRAIN_FRACTION,
+                "validation_fraction": VALIDATION_FRACTION,
+                "test_fraction": TEST_FRACTION,
+
+                # Características
                 "n_features": len(
                     FEATURE_COLUMNS
                 ),
-                "features": ",".join(FEATURE_COLUMNS)
+                "features": ",".join(
+                    FEATURE_COLUMNS
+                ),
+
+                # Datos
+                "data_start": data_start,
+                "data_end": data_end,
+                "data_file": input_path.name,
             }
         )
 
         # -------------------------------------------------
-        # 6. Log información del dataset
+        # 6. Registrar información del dataset
         # -------------------------------------------------
 
         mlflow.log_metrics(
             {
-                "train_observations": len(train),
-                "validation_observations": len(
-                    validation
+                "train_observations": float(
+                    len(train)
                 ),
-                "test_observations": len(test),
-                "risk_threshold": risk_threshold,
-                "train_risk_rate": train[
-                    "Risk"
-                ].mean(),
-                "validation_risk_rate": validation[
-                    "Risk"
-                ].mean(),
-                "test_risk_rate": test[
-                    "Risk"
-                ].mean(),
+                "validation_observations": float(
+                    len(validation)
+                ),
+                "test_observations": float(
+                    len(test)
+                ),
+                "risk_threshold": float(
+                    risk_threshold
+                ),
+                "train_risk_rate": float(
+                    train["Risk"].mean()
+                ),
+                "validation_risk_rate": float(
+                    validation["Risk"].mean()
+                ),
+                "test_risk_rate": float(
+                    test["Risk"].mean()
+                ),
             }
         )
 
@@ -389,7 +694,7 @@ def main(
         y_test = test["Risk"]
 
         # -------------------------------------------------
-        # 8. Modelo
+        # 8. Definir modelo
         # -------------------------------------------------
 
         model = Pipeline(
@@ -397,7 +702,7 @@ def main(
                 (
                     "imputer",
                     SimpleImputer(
-                        strategy="median"
+                        strategy=IMPUTER_STRATEGY
                     ),
                 ),
                 (
@@ -407,9 +712,10 @@ def main(
                 (
                     "classifier",
                     LogisticRegression(
-                        max_iter=1000,
-                        class_weight="balanced",
-                        solver="lbfgs",
+                        max_iter=LOGISTIC_MAX_ITER,
+                        class_weight=LOGISTIC_CLASS_WEIGHT,
+                        solver=LOGISTIC_SOLVER,
+                        random_state=RANDOM_STATE,
                         n_jobs=-1,
                     ),
                 ),
@@ -464,22 +770,28 @@ def main(
         # 10. Registrar métricas en MLflow
         # -------------------------------------------------
 
-        for name, value in train_metrics.items():
+        for name, value in (
+            train_metrics.items()
+        ):
             mlflow.log_metric(
                 f"train_{name}",
-                value,
+                float(value),
             )
 
-        for name, value in validation_metrics.items():
+        for name, value in (
+            validation_metrics.items()
+        ):
             mlflow.log_metric(
                 f"validation_{name}",
-                value,
+                float(value),
             )
 
-        for name, value in test_metrics.items():
+        for name, value in (
+            test_metrics.items()
+        ):
             mlflow.log_metric(
                 f"test_{name}",
-                value,
+                float(value),
             )
 
         # -------------------------------------------------
@@ -542,7 +854,9 @@ def main(
         mlflow.sklearn.log_model(
             model,
             name="p2_risk_model",
-            skops_trusted_types=["numpy.dtype"],
+            skops_trusted_types=[
+                "numpy.dtype"
+            ],
         )
 
         logger.success(
@@ -550,19 +864,33 @@ def main(
         )
 
         logger.success(
-            f"MLflow Run ID: {run.info.run_id}"
+            f"MLflow Run ID: "
+            f"{run.info.run_id}"
         )
 
         logger.success(
-            f"Modelo local: {MODEL_PATH}"
+            f"Commit de Git: "
+            f"{git_commit}"
         )
 
         logger.success(
-            f"Métricas: {METRICS_PATH}"
+            f"Versión de datos: "
+            f"{data_version[:12]}..."
         )
 
         logger.success(
-            f"Threshold: {THRESHOLD_PATH}"
+            f"Modelo local: "
+            f"{MODEL_PATH}"
+        )
+
+        logger.success(
+            f"Métricas: "
+            f"{METRICS_PATH}"
+        )
+
+        logger.success(
+            f"Threshold: "
+            f"{THRESHOLD_PATH}"
         )
 
 
