@@ -257,6 +257,12 @@ def main(
 
     with mlflow.start_run(run_name="baseline_all_features") as run:
 
+        mlflow.set_tags({
+            "team": "Equipo02",
+            "question": "P2",
+            
+        })
+
         logger.info(
             f"MLflow Run ID: {run.info.run_id}"
         )
