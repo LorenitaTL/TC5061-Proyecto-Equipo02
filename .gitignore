@@ -1,5 +1,25 @@
 # Data
 /data/
+*.parquet
+datos_abiertos_*.csv
+nomenclatura_*.csv
+
+# Serialized models (keep the folder in Git)
+/models/*
+!/models/.gitkeep
+*.pkl
+*.pickle
+*.joblib
+
+# MLflow
+mlruns/
+mlartifacts/
+mlflow.db
+
+# Credentials
+.env.*
+*.pem
+*.key
 
 # Mac OS-specific storage files
 .DS_Store

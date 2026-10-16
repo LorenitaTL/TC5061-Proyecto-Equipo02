@@ -1,15 +1,14 @@
-
 import hashlib
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
 from mi_bici.dataset import (
     calculate_sha256,
     normalize_stations,
     normalize_trips,
 )
+
 
 def test_normalize_stations_flags_invalid_capacity():
     """Identifica estaciones con capacidad no válida."""
@@ -28,6 +27,7 @@ def test_normalize_stations_flags_invalid_capacity():
     assert len(stations) == 2
     assert stations["capacity_valid"].tolist() == [True, False]
     assert stations["coordinates_valid"].all()
+
 
 def test_calculate_sha256(tmp_path: Path):
     """El hash debe coincidir con un valor conocido."""

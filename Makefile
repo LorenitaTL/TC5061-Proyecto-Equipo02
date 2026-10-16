@@ -16,7 +16,14 @@ PYTHON_INTERPRETER = python
 requirements:
 	$(PYTHON_INTERPRETER) -m pip install -U pip
 	$(PYTHON_INTERPRETER) -m pip install -r requirements.txt
-	
+	$(MAKE) setup-hooks
+
+
+## Install pre-commit git hooks
+.PHONY: setup-hooks
+setup-hooks:
+	pre-commit install
+
 
 
 
@@ -50,9 +57,10 @@ test:
 ## Set up Python interpreter environment
 .PHONY: create_environment
 create_environment:
-	@bash -c "if [ ! -z `which virtualenvwrapper.sh` ]; then source `which virtualenvwrapper.sh`; mkvirtualenv $(PROJECT_NAME) --python=$(PYTHON_INTERPRETER); else mkvirtualenv.bat $(PROJECT_NAME) --python=$(PYTHON_INTERPRETER); fi"
-	@echo ">>> New virtualenv created. Activate with:\nworkon $(PROJECT_NAME)"
-	
+	uv venv --python $(PYTHON_VERSION)
+	uv pip install --python .venv pip
+	@echo ">>> New virtualenv created. Activate with:\nsource .venv/bin/activate"
+
 
 
 

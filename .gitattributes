@@ -1,0 +1,2 @@
+# Normalize line endings to LF on every OS so hooks and diffs behave the same
+* text=auto eol=lf

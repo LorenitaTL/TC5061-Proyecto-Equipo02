@@ -28,6 +28,7 @@ app = typer.Typer()
 
 PORTAL_URL = "https://mibici.net/es/datos-abiertos/"
 
+
 def get_curl_executable() -> str:
     """Localiza curl según el sistema operativo."""
 
@@ -36,12 +37,10 @@ def get_curl_executable() -> str:
     resolved = shutil.which(executable)
 
     if resolved is None:
-        raise RuntimeError(
-            f"No se encontró {executable}. "
-            "Instala curl para ejecutar la ingesta."
-        )
+        raise RuntimeError(f"No se encontró {executable}. Instala curl para ejecutar la ingesta.")
 
     return resolved
+
 
 class CSVLinkParser(HTMLParser):
     """Extrae enlaces CSV de la página de datos abiertos."""
@@ -59,6 +58,7 @@ class CSVLinkParser(HTMLParser):
 
         if ".csv" in href.lower():
             self.links.append(urljoin(PORTAL_URL, href))
+
 
 def discover_sources(
     start_month: str,
@@ -86,7 +86,8 @@ def discover_sources(
             "--location",
             "--silent",
             "--show-error",
-            "--max-time", "60",
+            "--max-time",
+            "60",
             PORTAL_URL,
         ],
         capture_output=True,
@@ -119,29 +120,28 @@ def discover_sources(
 
         if start_month <= period <= end_month:
             if period in sources and sources[period] != url:
-                raise ValueError(
-                    f"Se encontraron URL diferentes para {period}"
-                )
+                raise ValueError(f"Se encontraron URL diferentes para {period}")
             sources[period] = url
 
-    expected = pd.period_range(
-        start=start_month,
-        end=end_month,
-        freq="M",
-    ).strftime("%Y-%m").tolist()
+    expected = (
+        pd.period_range(
+            start=start_month,
+            end=end_month,
+            freq="M",
+        )
+        .strftime("%Y-%m")
+        .tolist()
+    )
 
     missing = sorted(set(expected) - set(sources))
 
     if missing:
-        raise RuntimeError(
-            f"No se encontraron los meses: {missing}"
-        )
+        raise RuntimeError(f"No se encontraron los meses: {missing}")
 
-    logger.success(
-        f"Fuentes identificadas: {len(sources)} meses"
-    )
+    logger.success(f"Fuentes identificadas: {len(sources)} meses")
 
     return dict(sorted(sources.items()))
+
 
 def download_file(url: str, destination: Path) -> Path:
     """
@@ -171,44 +171,38 @@ def download_file(url: str, destination: Path) -> Path:
         logger.info(f"El archivo ya existe: {destination.name}")
         return destination
 
-    temp_path = destination.with_suffix(
-        destination.suffix + ".part"
-    )
+    temp_path = destination.with_suffix(destination.suffix + ".part")
 
     command = [
         get_curl_executable(),
         "--fail",
         "--location",
-        "--retry", "2",
-        "--connect-timeout", "15",
-        "--output", str(temp_path),
-        url
+        "--retry",
+        "2",
+        "--connect-timeout",
+        "15",
+        "--output",
+        str(temp_path),
+        url,
     ]
 
     try:
         logger.info(f"Descargando: {destination.name}")
 
-        subprocess.run(
-            command,
-            check=True
-        )
+        subprocess.run(command, check=True)
 
         if not temp_path.exists() or temp_path.stat().st_size == 0:
             raise RuntimeError("El archivo descargado está vacío.")
 
         temp_path.replace(destination)
 
-        logger.success(
-            f"Descarga completada: {destination.name}"
-        )
+        logger.success(f"Descarga completada: {destination.name}")
 
         return destination
 
     except (subprocess.CalledProcessError, OSError):
         temp_path.unlink(missing_ok=True)
-        logger.exception(
-            f"No fue posible descargar {destination.name}"
-        )
+        logger.exception(f"No fue posible descargar {destination.name}")
         raise
 
 
@@ -242,21 +236,14 @@ def read_csv_robust(path: Path) -> tuple[pd.DataFrame, str]:
                 low_memory=False,
             )
 
-            logger.success(
-                f"{path.name}: leído con {encoding}, "
-                f"{len(df):,} registros"
-            )
+            logger.success(f"{path.name}: leído con {encoding}, {len(df):,} registros")
 
             return df, encoding
 
         except UnicodeError:
-            logger.warning(
-                f"{path.name}: no se pudo leer con {encoding}"
-            )
+            logger.warning(f"{path.name}: no se pudo leer con {encoding}")
 
-    raise UnicodeError(
-        f"No fue posible decodificar el archivo {path.name}"
-    )
+    raise UnicodeError(f"No fue posible decodificar el archivo {path.name}")
 
 
 def normalize_trips(df: pd.DataFrame) -> pd.DataFrame:
@@ -280,13 +267,9 @@ def normalize_trips(df: pd.DataFrame) -> pd.DataFrame:
     missing_columns = set(column_mapping) - set(df.columns)
 
     if missing_columns:
-        raise ValueError(
-            f"Faltan columnas requeridas: {sorted(missing_columns)}"
-        )
+        raise ValueError(f"Faltan columnas requeridas: {sorted(missing_columns)}")
 
-    trips = df[list(column_mapping)].rename(
-        columns=column_mapping
-    ).copy()
+    trips = df[list(column_mapping)].rename(columns=column_mapping).copy()
 
     # Normalizar identificadores
     for col in [
@@ -310,29 +293,19 @@ def normalize_trips(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Calcular duración
-    trips["duration_minutes"] = (
-        trips["ended_at"] - trips["started_at"]
-    ).dt.total_seconds() / 60
+    trips["duration_minutes"] = (trips["ended_at"] - trips["started_at"]).dt.total_seconds() / 60
 
     # Indicadores de calidad
     trips["invalid_start"] = trips["started_at"].isna()
     trips["invalid_end"] = trips["ended_at"].isna()
 
-    trips["negative_duration"] = (
-        trips["duration_minutes"] < 0
-    ).fillna(False)
+    trips["negative_duration"] = (trips["duration_minutes"] < 0).fillna(False)
 
-    trips["zero_duration"] = (
-        trips["duration_minutes"] == 0
-    ).fillna(False)
+    trips["zero_duration"] = (trips["duration_minutes"] == 0).fillna(False)
 
-    trips["duplicate_trip_id"] = trips.duplicated(
-        subset=["trip_id"], keep=False
-    )
+    trips["duplicate_trip_id"] = trips.duplicated(subset=["trip_id"], keep=False)
 
-    logger.success(
-        f"Viajes normalizados: {len(trips):,} registros"
-    )
+    logger.success(f"Viajes normalizados: {len(trips):,} registros")
 
     return trips
 
@@ -356,53 +329,32 @@ def normalize_stations(df: pd.DataFrame) -> pd.DataFrame:
     missing_columns = set(column_mapping) - set(df.columns)
 
     if missing_columns:
-        raise ValueError(
-            f"Faltan columnas requeridas: {sorted(missing_columns)}"
-        )
+        raise ValueError(f"Faltan columnas requeridas: {sorted(missing_columns)}")
 
-    stations = df[list(column_mapping)].rename(
-        columns=column_mapping
-    ).copy()
+    stations = df[list(column_mapping)].rename(columns=column_mapping).copy()
 
     # Normalizar identificadores y nombres
-    stations["station_id"] = (
-        stations["station_id"].astype("string").str.strip()
-    )
+    stations["station_id"] = stations["station_id"].astype("string").str.strip()
 
-    stations["station_name"] = (
-        stations["station_name"].astype("string").str.strip()
-    )
+    stations["station_name"] = stations["station_name"].astype("string").str.strip()
 
     # Convertir variables numéricas
-    stations["latitude"] = pd.to_numeric(
-        stations["latitude"], errors="coerce"
-    )
+    stations["latitude"] = pd.to_numeric(stations["latitude"], errors="coerce")
 
-    stations["longitude"] = pd.to_numeric(
-        stations["longitude"], errors="coerce"
-    )
+    stations["longitude"] = pd.to_numeric(stations["longitude"], errors="coerce")
 
-    stations["capacity"] = pd.to_numeric(
-        stations["capacity"], errors="coerce"
-    ).astype("Int64")
+    stations["capacity"] = pd.to_numeric(stations["capacity"], errors="coerce").astype("Int64")
 
     # Reglas de calidad
-    stations["capacity_valid"] = (
-        stations["capacity"] > 0
-    ).fillna(False)
+    stations["capacity_valid"] = (stations["capacity"] > 0).fillna(False)
 
     stations["coordinates_valid"] = (
-        stations["latitude"].between(-90, 90)
-        & stations["longitude"].between(-180, 180)
+        stations["latitude"].between(-90, 90) & stations["longitude"].between(-180, 180)
     ).fillna(False)
 
-    stations["duplicate_station_id"] = stations.duplicated(
-        subset=["station_id"], keep=False
-    )
+    stations["duplicate_station_id"] = stations.duplicated(subset=["station_id"], keep=False)
 
-    logger.success(
-        f"Estaciones normalizadas: {len(stations):,} registros"
-    )
+    logger.success(f"Estaciones normalizadas: {len(stations):,} registros")
 
     return stations
 
@@ -411,10 +363,7 @@ def process_stations() -> dict:
     """
     Descarga y normaliza el catálogo de estaciones.
     """
-    catalog_url = (
-        f"{MIBICI_BASE_URL}/site/assets/files/1118/"
-        f"{STATIONS_FILENAME}"
-    )
+    catalog_url = f"{MIBICI_BASE_URL}/site/assets/files/1118/{STATIONS_FILENAME}"
 
     raw_path = EXTERNAL_DATA_DIR / STATIONS_FILENAME
     processed_path = PROCESSED_DATA_DIR / "estaciones.parquet"
@@ -431,19 +380,14 @@ def process_stations() -> dict:
         "encoding": encoding,
         "raw_rows": len(raw_df),
         "processed_rows": len(stations),
-        "invalid_capacity": int(
-            (~stations["capacity_valid"]).sum()
-        ),
-        "invalid_coordinates": int(
-            (~stations["coordinates_valid"]).sum()
-        ),
+        "invalid_capacity": int((~stations["capacity_valid"]).sum()),
+        "invalid_coordinates": int((~stations["coordinates_valid"]).sum()),
     }
 
-    logger.success(
-        f"Catálogo procesado: {len(stations):,} estaciones"
-    )
+    logger.success(f"Catálogo procesado: {len(stations):,} estaciones")
 
     return result
+
 
 def save_parquet(
     df: pd.DataFrame,
@@ -481,18 +425,13 @@ def save_parquet(
 
         temp_path.replace(destination)
 
-        logger.success(
-            f"Parquet generado: {destination.name} "
-            f"({len(df):,} registros)"
-        )
+        logger.success(f"Parquet generado: {destination.name} ({len(df):,} registros)")
 
         return destination
 
     except Exception:
         temp_path.unlink(missing_ok=True)
-        logger.exception(
-            f"Error al guardar {destination.name}"
-        )
+        logger.exception(f"Error al guardar {destination.name}")
         raise
 
 
@@ -520,9 +459,7 @@ def process_month(period: str, url: str) -> dict:
     filename = f"datos_abiertos_{year}_{month}.csv"
     raw_path = RAW_DATA_DIR / filename
 
-    output_path = (
-        PROCESSED_DATA_DIR / f"viajes_{year}_{month}.parquet"
-    )
+    output_path = PROCESSED_DATA_DIR / f"viajes_{year}_{month}.parquet"
 
     logger.info(f"Iniciando procesamiento del mes {period}")
 
@@ -538,10 +475,7 @@ def process_month(period: str, url: str) -> dict:
     # 4. Validar cobertura temporal
     period_observed = trips["started_at"].dt.strftime("%Y-%m")
 
-    outside_period = (
-        period_observed.notna()
-        & (period_observed != period)
-    ).sum()
+    outside_period = (period_observed.notna() & (period_observed != period)).sum()
 
     # 5. Exportar a Parquet
     save_parquet(trips, output_path)
@@ -555,20 +489,14 @@ def process_month(period: str, url: str) -> dict:
         "processed_rows": len(trips),
         "invalid_start": int(trips["invalid_start"].sum()),
         "invalid_end": int(trips["invalid_end"].sum()),
-        "negative_duration": int(
-            trips["negative_duration"].sum()
-        ),
+        "negative_duration": int(trips["negative_duration"].sum()),
         "zero_duration": int(trips["zero_duration"].sum()),
-        "duplicate_trip_id": int(
-            trips["duplicate_trip_id"].sum()
-        ),
+        "duplicate_trip_id": int(trips["duplicate_trip_id"].sum()),
         "outside_period": int(outside_period),
         "output_file": output_path.name,
     }
 
-    logger.success(
-        f"Mes {period} procesado: {len(trips):,} registros"
-    )
+    logger.success(f"Mes {period} procesado: {len(trips):,} registros")
 
     # Liberar referencias antes del siguiente mes
     del raw_df, trips
@@ -612,15 +540,10 @@ def generate_manifest(
         period = str(row["period"])
         year, month = period.split("-")
 
-        raw_filename = (
-            f"datos_abiertos_{year}_{month}.csv"
-        )
+        raw_filename = f"datos_abiertos_{year}_{month}.csv"
 
         raw_path = RAW_DATA_DIR / raw_filename
-        processed_path = (
-            PROCESSED_DATA_DIR
-            / f"viajes_{year}_{month}.parquet"
-        )
+        processed_path = PROCESSED_DATA_DIR / f"viajes_{year}_{month}.parquet"
 
         if not raw_path.is_file():
             raise FileNotFoundError(raw_path)
@@ -638,21 +561,15 @@ def generate_manifest(
                 "raw_bytes": raw_path.stat().st_size,
                 "raw_sha256": calculate_sha256(raw_path),
                 "processed_file": processed_path.name,
-                "processed_bytes": (
-                    processed_path.stat().st_size
-                ),
-                "processed_sha256": calculate_sha256(
-                    processed_path
-                ),
+                "processed_bytes": (processed_path.stat().st_size),
+                "processed_sha256": calculate_sha256(processed_path),
             }
         )
 
         logger.info(f"Hashes calculados: {period}")
 
     stations_raw = EXTERNAL_DATA_DIR / stations_filename
-    stations_processed = (
-        PROCESSED_DATA_DIR / "estaciones.parquet"
-    )
+    stations_processed = PROCESSED_DATA_DIR / "estaciones.parquet"
 
     for path in [stations_raw, stations_processed]:
         if not path.is_file():
@@ -663,23 +580,15 @@ def generate_manifest(
         "source": "Portal de datos abiertos MiBici",
         "period_start": str(summary["period"].min()),
         "period_end": str(summary["period"].max()),
-        "generated_at_utc": (
-            datetime.now(UTC).isoformat()
-        ),
+        "generated_at_utc": (datetime.now(UTC).isoformat()),
         "total_months": len(records),
-        "total_trips": int(
-            summary["processed_rows"].sum()
-        ),
+        "total_trips": int(summary["processed_rows"].sum()),
         "monthly_files": records,
         "stations": {
             "source_file": stations_raw.name,
-            "source_sha256": calculate_sha256(
-                stations_raw
-            ),
+            "source_sha256": calculate_sha256(stations_raw),
             "processed_file": stations_processed.name,
-            "processed_sha256": calculate_sha256(
-                stations_processed
-            ),
+            "processed_sha256": calculate_sha256(stations_processed),
             "catalog_period": "2026-09",
             "limitation": (
                 "La capacidad registrada en el catálogo "
@@ -710,9 +619,7 @@ def generate_manifest(
 
     temp_path.replace(manifest_path)
 
-    logger.success(
-        f"Manifiesto generado: {manifest_path}"
-    )
+    logger.success(f"Manifiesto generado: {manifest_path}")
 
     return manifest
 
@@ -736,9 +643,7 @@ def verify_manifest(manifest_path: Path) -> bool:
 
     for record in manifest["monthly_files"]:
         raw_path = RAW_DATA_DIR / record["raw_file"]
-        processed_path = (
-            PROCESSED_DATA_DIR / record["processed_file"]
-        )
+        processed_path = PROCESSED_DATA_DIR / record["processed_file"]
 
         verify_file(raw_path, record["raw_sha256"])
         verify_file(
@@ -762,16 +667,12 @@ def verify_manifest(manifest_path: Path) -> bool:
         for error in errors:
             logger.error(error)
 
-        raise RuntimeError(
-            f"Falló la verificación de {len(errors)} archivo(s)."
-        )
+        raise RuntimeError(f"Falló la verificación de {len(errors)} archivo(s).")
 
-    logger.success(
-        "Integridad verificada: todos los archivos "
-        "coinciden con el manifiesto."
-    )
+    logger.success("Integridad verificada: todos los archivos coinciden con el manifiesto.")
 
     return True
+
 
 @app.command()
 def ingest(
@@ -789,19 +690,13 @@ def ingest(
     un rango mensual configurable.
     """
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", start_month):
-        raise typer.BadParameter(
-            "start_month debe tener formato YYYY-MM"
-        )
+        raise typer.BadParameter("start_month debe tener formato YYYY-MM")
 
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", end_month):
-        raise typer.BadParameter(
-            "end_month debe tener formato YYYY-MM"
-        )
+        raise typer.BadParameter("end_month debe tener formato YYYY-MM")
 
     if start_month > end_month:
-        raise typer.BadParameter(
-            "El mes inicial no puede ser posterior al final"
-        )
+        raise typer.BadParameter("El mes inicial no puede ser posterior al final")
 
     logger.info("Preparando catálogo de estaciones")
     process_stations()
@@ -816,10 +711,7 @@ def ingest(
 
     summary = pd.DataFrame(results)
 
-    summary_path = (
-        PROCESSED_DATA_DIR
-        / f"resumen_ingesta_{start_month}_{end_month}.csv"
-    )
+    summary_path = PROCESSED_DATA_DIR / f"resumen_ingesta_{start_month}_{end_month}.csv"
 
     summary.to_csv(
         summary_path,
@@ -827,16 +719,13 @@ def ingest(
         encoding="utf-8-sig",
     )
 
-    logger.success(
-        f"Resumen de ingesta guardado: {summary_path.name}"
-        )
+    logger.success(f"Resumen de ingesta guardado: {summary_path.name}")
 
     print("\n--- RESUMEN DE INGESTA ---")
     print(summary.to_string(index=False))
 
-    logger.success(
-        f"Ingesta completada para {len(results)} meses"
-    )
+    logger.success(f"Ingesta completada para {len(results)} meses")
+
 
 @app.command("manifest")
 def manifest_command(
@@ -844,14 +733,9 @@ def manifest_command(
     end_month: str = typer.Option(DATA_END_MONTH),
 ):
     """Genera el manifiesto de los datos ya procesados."""
-    summary_path = (
-        PROCESSED_DATA_DIR
-        / f"resumen_ingesta_{start_month}_{end_month}.csv"
-    )
+    summary_path = PROCESSED_DATA_DIR / f"resumen_ingesta_{start_month}_{end_month}.csv"
 
-    manifest_path = (
-        REFERENCES_DIR / "data_manifest.json"
-    )
+    manifest_path = REFERENCES_DIR / "data_manifest.json"
 
     generate_manifest(
         summary_path=summary_path,
@@ -859,14 +743,14 @@ def manifest_command(
         stations_filename=STATIONS_FILENAME,
     )
 
+
 @app.command("verify")
 def verify_command():
     """Verifica archivos contra los hashes registrados."""
-    manifest_path = (
-        REFERENCES_DIR / "data_manifest.json"
-    )
+    manifest_path = REFERENCES_DIR / "data_manifest.json"
 
     verify_manifest(manifest_path)
+
 
 if __name__ == "__main__":
     app()

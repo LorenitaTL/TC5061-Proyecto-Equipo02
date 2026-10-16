@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from loguru import logger
@@ -30,17 +29,10 @@ def validate_station_coverage(
     destination = trips["destination_station_id"].astype("string")
 
     missing_origin = origin.isna() | origin.str.strip().eq("").fillna(False)
-    missing_destination = (
-        destination.isna()
-        | destination.str.strip().eq("").fillna(False)
-    )
+    missing_destination = destination.isna() | destination.str.strip().eq("").fillna(False)
 
-    unknown_origin = (
-        ~origin.isin(catalog_ids) & ~missing_origin
-    )
-    unknown_destination = (
-        ~destination.isin(catalog_ids) & ~missing_destination
-    )
+    unknown_origin = ~origin.isin(catalog_ids) & ~missing_origin
+    unknown_destination = ~destination.isin(catalog_ids) & ~missing_destination
 
     return {
         "period": trips_path.stem.replace("viajes_", "").replace("_", "-"),
@@ -60,37 +52,23 @@ def main():
         columns=["station_id"],
     )
 
-    catalog_ids = set(
-        stations["station_id"].dropna().astype("string")
-    )
+    catalog_ids = set(stations["station_id"].dropna().astype("string"))
 
-    files = sorted(
-        PROCESSED_DATA_DIR.glob("viajes_????_??.parquet")
-    )
+    files = sorted(PROCESSED_DATA_DIR.glob("viajes_????_??.parquet"))
 
     if not files:
-        raise FileNotFoundError(
-            "No se encontraron archivos de viajes procesados."
-        )
+        raise FileNotFoundError("No se encontraron archivos de viajes procesados.")
 
-    results = [
-        validate_station_coverage(path, catalog_ids)
-        for path in files
-    ]
+    results = [validate_station_coverage(path, catalog_ids) for path in files]
 
     # Resultados de correspondencia de estaciones
     station_summary = pd.DataFrame(results)
 
     # Indicadores de calidad generados durante la ingesta
-    ingestion_path = (
-        PROCESSED_DATA_DIR
-        / "resumen_ingesta_2025-01_2026-06.csv"
-    )
+    ingestion_path = PROCESSED_DATA_DIR / "resumen_ingesta_2025-01_2026-06.csv"
 
     if not ingestion_path.is_file():
-        raise FileNotFoundError(
-            f"No se encontró el resumen de ingesta: {ingestion_path}"
-        )
+        raise FileNotFoundError(f"No se encontró el resumen de ingesta: {ingestion_path}")
 
     ingestion_summary = pd.read_csv(ingestion_path)
 
@@ -105,16 +83,13 @@ def main():
 
     if not summary["_merge"].eq("both").all():
         raise ValueError(
-            "Los periodos del resumen de ingesta "
-            "y de cobertura de estaciones no coinciden."
+            "Los periodos del resumen de ingesta y de cobertura de estaciones no coinciden."
         )
 
     summary = summary.drop(columns=["_merge"])
 
     # Guardar reporte consolidado
-    output_path = (
-        PROCESSED_DATA_DIR / "data_quality_report.csv"
-    )
+    output_path = PROCESSED_DATA_DIR / "data_quality_report.csv"
 
     summary.to_csv(
         output_path,
@@ -124,9 +99,7 @@ def main():
 
     print(summary.to_string(index=False))
 
-    logger.success(
-        f"Reporte de calidad generado: {output_path}"
-    )
+    logger.success(f"Reporte de calidad generado: {output_path}")
 
 
 if __name__ == "__main__":

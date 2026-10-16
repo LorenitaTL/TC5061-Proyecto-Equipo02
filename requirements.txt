@@ -2,6 +2,7 @@ loguru==0.7.3
 mkdocs
 pandas==3.0.6
 pip
+pre-commit
 pyarrow==26.0.0
 pytest==9.1.1
 python-dotenv==1.2.4
