@@ -1,9 +1,11 @@
-loguru
+loguru==0.7.3
 mkdocs
+pandas==3.0.6
 pip
-pytest
-python-dotenv
+pyarrow==26.0.0
+pytest==9.1.1
+python-dotenv==1.2.4
 ruff
 tqdm
-typer
+typer==0.27.3
 -e .
