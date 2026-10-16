@@ -268,6 +268,129 @@ La ingesta procesa los archivos mensualmente para reducir la presión sobre la m
 
 Las versiones directas de las principales dependencias se declaran en `requirements.txt`. Los hashes identifican las versiones exactas de los archivos originales y transformados utilizadas en esta ejecución. Regenerar Parquet con versiones diferentes de las bibliotecas podría modificar sus hashes.
 
+
+## P2 — Predicción de riesgo operacional
+
+### Objetivo
+
+La pregunta P2 busca predecir si una estación de MiBici presentará un desbalance operacional elevado durante la siguiente hora.
+
+Para cada estación y hora `t`, el modelo utiliza información disponible hasta ese momento para predecir si el desbalance relativo durante la hora `t+1` pertenecerá al 20 % superior de la distribución observada en el conjunto de entrenamiento.
+
+El desbalance relativo de la siguiente hora se define como:
+
+$$
+\text{ImbalanceRatio}_{t+1}
+=
+\frac{|D_{t+1}-A_{t+1}|}{C}
+$$
+
+donde:
+
+- $D_{t+1}$ = número de salidas durante la siguiente hora;
+- $A_{t+1}$ = número de llegadas durante la siguiente hora;
+- $C$ = capacidad de la estación.
+
+El umbral de clasificación se obtiene como el percentil 80 de la distribución del objetivo calculada **únicamente sobre el conjunto de entrenamiento**:
+
+`P80 = 0.066667`
+
+Por lo tanto, una observación pertenece a la clase positiva cuando el desbalance relativo de la siguiente hora supera este umbral. Este valor funciona como un **proxy relativo de riesgo operacional** y no como un umbral físico o de seguridad de una estación.
+
+### Características
+
+El modelo utiliza 30 características, agrupadas en:
+
+- actividad actual: salidas, llegadas y flujo neto;
+- desbalance y capacidad de la estación;
+- ubicación de la estación;
+- variables temporales y variables cíclicas de hora y día;
+- rezagos de 1, 2 y 24 horas;
+- ventanas móviles históricas de 3 y 24 horas.
+
+Las variables históricas utilizan únicamente información disponible hasta el instante `t`, evitando utilizar información futura para predecir `t+1`.
+
+### Partición temporal
+
+Se utiliza una partición cronológica para evitar fuga de información:
+
+| Conjunto | Periodo | Observaciones |
+| --- | --- | ---: |
+| Train | 2025-01-01 00:00 → 2026-01-18 03:00 | 4,402,560 |
+| Validation | 2026-01-18 04:00 → 2026-04-10 01:00 | 943,680 |
+| Test | 2026-04-10 02:00 → 2026-06-30 23:00 | 943,680 |
+
+En total se utilizan **6,289,920 observaciones estación-hora**.
+
+El umbral P80 utilizado para definir la clase positiva se calcula exclusivamente con el conjunto de entrenamiento, evitando utilizar información de validación o prueba durante la definición del problema.
+
+### Pipeline y modelo
+
+El pipeline de clasificación utiliza:
+
+1. imputación de valores faltantes mediante la mediana;
+2. estandarización de características;
+3. Regresión Logística con `class_weight="balanced"`.
+
+La clasificación se realiza utilizando una probabilidad de decisión de `0.5`.
+
+Las métricas utilizadas son **Recall, Precision, F1 y ROC-AUC**. Recall es especialmente relevante para identificar la mayor cantidad posible de estaciones con riesgo, mientras que Precision y F1 permiten evaluar el costo de las alertas adicionales. ROC-AUC se utiliza como medida complementaria del poder discriminativo del modelo.
+
+### Resultados
+
+El modelo final corresponde al baseline con las 30 características.
+
+Resultados obtenidos sobre los tres conjuntos:
+
+| Conjunto | Recall | Precision | F1 | ROC-AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Train | 0.7505 | 0.5804 | 0.6546 | 0.8465 |
+| Validation | 0.7391 | 0.5597 | 0.6370 | 0.8410 |
+| Test | 0.7283 | 0.5524 | 0.6283 | 0.8364 |
+
+El experimento se registra en MLflow bajo `P2-operational-risk`.
+
+**Run final:** `e4385d55f1614c5989436bf066c9d791`
+
+El entrenamiento puede reproducirse desde la raíz del repositorio mediante:
+
+```bash
+python -m mi_bici.modeling.train
+```
+
+Los artefactos generados localmente incluyen:
+
+```text
+models/p2_risk_model.joblib
+models/p2_metrics.csv
+models/p2_threshold.txt
+```
+
+Estos archivos están excluidos del control de versiones mediante `.gitignore`. El modelo y sus resultados experimentales se registran en MLflow.
+
+### Ablaciones
+
+Se realizaron pruebas de eliminación de grupos de variables para evaluar la contribución de la información de desbalance y actividad actual:
+
+| Modelo | Variables | Recall | Precision | F1 | ROC-AUC |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Baseline | 30 | 0.7283 | 0.5524 | 0.6283 | 0.8364 |
+| Sin desbalance actual | 28 | 0.7313 | 0.5397 | 0.6210 | 0.8330 |
+| Sin flujo actual | 25 | 0.7290 | 0.5267 | 0.6116 | 0.8249 |
+
+Aunque la eliminación del desbalance actual produce un incremento marginal en Recall, el baseline presenta el mejor equilibrio general entre **Precision, F1 y ROC-AUC**. Por esta razón, se conserva el modelo con las 30 variables como modelo final de P2.
+
+### Reproducibilidad de P2
+
+Para reproducir el entrenamiento de P2 desde la raíz del repositorio:
+
+```bash
+python -m mi_bici.modeling.train
+```
+
+El script realiza la carga de las características procesadas, genera la partición temporal, calcula el umbral P80 a partir del conjunto de entrenamiento, entrena el pipeline de clasificación, evalúa el modelo en train, validation y test, y registra el experimento y sus artefactos en MLflow.
+
+
 ## Project Organization
 
 ```
