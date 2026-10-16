@@ -21,7 +21,7 @@ Se procesaron **6,622,260 viajes correspondientes a 18 meses**, de enero de 2025
 
 ### Requisitos e instalación
 
-El proyecto requiere Python 3.12 y las bibliotecas declaradas en `requirements.txt`. La descarga utiliza `curl.exe`, disponible en Windows.
+El proyecto requiere Python 3.12 y las bibliotecas declaradas en requirements.txt. La descarga utiliza curl, cuyo ejecutable se identifica según el sistema operativo (curl.exe en Windows y curl en macOS/Linux). Es necesario que se encuentre instalado y disponible en el PATH.
 
 Desde PowerShell, en la raíz del repositorio:
 

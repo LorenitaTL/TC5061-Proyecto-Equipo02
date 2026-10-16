@@ -4,7 +4,9 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
+import sys
 from urllib.parse import urljoin
 
 from loguru import logger
@@ -15,6 +17,7 @@ from mi_bici.config import (
     DATA_END_MONTH,
     DATA_START_MONTH,
     EXTERNAL_DATA_DIR,
+    MIBICI_BASE_URL,
     PROCESSED_DATA_DIR,
     RAW_DATA_DIR,
     REFERENCES_DIR,
@@ -25,6 +28,20 @@ app = typer.Typer()
 
 PORTAL_URL = "https://mibici.net/es/datos-abiertos/"
 
+def get_curl_executable() -> str:
+    """Localiza curl según el sistema operativo."""
+
+    executable = "curl.exe" if sys.platform == "win32" else "curl"
+
+    resolved = shutil.which(executable)
+
+    if resolved is None:
+        raise RuntimeError(
+            f"No se encontró {executable}. "
+            "Instala curl para ejecutar la ingesta."
+        )
+
+    return resolved
 
 class CSVLinkParser(HTMLParser):
     """Extrae enlaces CSV de la página de datos abiertos."""
@@ -42,7 +59,6 @@ class CSVLinkParser(HTMLParser):
 
         if ".csv" in href.lower():
             self.links.append(urljoin(PORTAL_URL, href))
-
 
 def discover_sources(
     start_month: str,
@@ -65,7 +81,7 @@ def discover_sources(
     """
     response = subprocess.run(
         [
-            "curl.exe",
+            get_curl_executable(),
             "--fail",
             "--location",
             "--silent",
@@ -160,7 +176,7 @@ def download_file(url: str, destination: Path) -> Path:
     )
 
     command = [
-        "curl.exe",
+        get_curl_executable(),
         "--fail",
         "--location",
         "--retry", "2",
@@ -396,8 +412,8 @@ def process_stations() -> dict:
     Descarga y normaliza el catálogo de estaciones.
     """
     catalog_url = (
-        "https://mibici.net/site/assets/files/1118/"
-        "nomenclatura_2026_09.csv"
+        f"{MIBICI_BASE_URL}/site/assets/files/1118/"
+        f"{STATIONS_FILENAME}"
     )
 
     raw_path = EXTERNAL_DATA_DIR / STATIONS_FILENAME
