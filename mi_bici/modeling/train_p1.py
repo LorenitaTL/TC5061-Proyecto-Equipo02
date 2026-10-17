@@ -10,7 +10,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
 from mi_bici.modeling.splits_p1 import temporal_masks
-from mi_bici.modeling.tracking_p1 import configure_mlflow, log_p1_traceability
+from mi_bici.modeling.tracking import configure_mlflow
+from mi_bici.modeling.tracking_p1 import log_p1_traceability
 
 DATASET = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
 
