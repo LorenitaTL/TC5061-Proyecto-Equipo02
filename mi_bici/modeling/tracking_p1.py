@@ -1,47 +1,14 @@
 """Configuración y trazabilidad compartida de experimentos P1."""
 
-import hashlib
-import json
 import os
-import subprocess
 
 import mlflow
 
-from mi_bici.config import PROJ_ROOT, REFERENCES_DIR
 from mi_bici.modeling.splits_p1 import TRAIN_END, VALIDATION_END
+from mi_bici.modeling.tracking import get_data_version, get_git_commit
 
 DEFAULT_EXPERIMENT_NAME = "mibici-equipo02-P1"
 TRACKING_URI = "sqlite:///mlflow.db"
-
-
-def get_git_commit() -> str:
-    """Obtiene el commit actual del repositorio."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=PROJ_ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout.strip()
-
-
-def get_data_version() -> str:
-    """Calcula una huella estable del manifiesto de datos fuente."""
-    path = REFERENCES_DIR / "data_manifest.json"
-    manifest = json.loads(path.read_text(encoding="utf-8"))
-
-    # La fecha de generación no modifica la identidad de los datos.
-    manifest.pop("generated_at_utc", None)
-
-    canonical = json.dumps(
-        manifest,
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def configure_mlflow() -> str:
