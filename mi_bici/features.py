@@ -32,13 +32,12 @@ entrenamiento para evitar fuga de información.
 
 from pathlib import Path
 
+from loguru import logger
 import numpy as np
 import pandas as pd
 import typer
-from loguru import logger
 
 from mi_bici.config import PROCESSED_DATA_DIR
-
 
 app = typer.Typer()
 
@@ -64,22 +63,15 @@ def load_trips(processed_dir: Path) -> pd.DataFrame:
     incorpora información del resultado futuro que queremos predecir.
     """
 
-    files = sorted(
-        processed_dir.glob("viajes_*.parquet")
-    )
+    files = sorted(processed_dir.glob("viajes_*.parquet"))
 
     if not files:
-        raise FileNotFoundError(
-            f"No se encontraron archivos viajes_*.parquet "
-            f"en {processed_dir}"
-        )
+        raise FileNotFoundError(f"No se encontraron archivos viajes_*.parquet en {processed_dir}")
 
     frames = []
 
     for path in files:
-        logger.info(
-            f"Leyendo {path.name}"
-        )
+        logger.info(f"Leyendo {path.name}")
 
         frames.append(
             pd.read_parquet(
@@ -124,15 +116,9 @@ def load_trips(processed_dir: Path) -> pd.DataFrame:
         "origin_station_id",
         "destination_station_id",
     ]:
-        trips[col] = (
-            trips[col]
-            .astype("string")
-            .str.strip()
-        )
+        trips[col] = trips[col].astype("string").str.strip()
 
-    logger.success(
-        f"Viajes cargados: {len(trips):,}"
-    )
+    logger.success(f"Viajes cargados: {len(trips):,}")
 
     return trips
 
@@ -168,9 +154,7 @@ def load_stations(processed_dir: Path) -> pd.DataFrame:
     path = processed_dir / "estaciones.parquet"
 
     if not path.is_file():
-        raise FileNotFoundError(
-            f"No se encontró {path}"
-        )
+        raise FileNotFoundError(f"No se encontró {path}")
 
     stations = pd.read_parquet(
         path,
@@ -183,11 +167,7 @@ def load_stations(processed_dir: Path) -> pd.DataFrame:
         ],
     )
 
-    stations["station_id"] = (
-        stations["station_id"]
-        .astype("string")
-        .str.strip()
-    )
+    stations["station_id"] = stations["station_id"].astype("string").str.strip()
 
     stations["capacity"] = pd.to_numeric(
         stations["capacity"],
@@ -202,13 +182,9 @@ def load_stations(processed_dir: Path) -> pd.DataFrame:
 
     # Una estación sin capacidad válida no puede utilizarse para normalizar
     # el desequilibrio.
-    stations = stations[
-        stations["capacity"] > 0
-    ].copy()
+    stations = stations[stations["capacity"] > 0].copy()
 
-    logger.success(
-        f"Estaciones válidas: {len(stations):,}"
-    )
+    logger.success(f"Estaciones válidas: {len(stations):,}")
 
     return stations
 
@@ -245,9 +221,7 @@ def aggregate_station_flows(
     """
 
     departures = (
-        trips.assign(
-            hour=trips["started_at"].dt.floor("h")
-        )
+        trips.assign(hour=trips["started_at"].dt.floor("h"))
         .groupby(
             [
                 "origin_station_id",
@@ -265,9 +239,7 @@ def aggregate_station_flows(
     )
 
     arrivals = (
-        trips.assign(
-            hour=trips["ended_at"].dt.floor("h")
-        )
+        trips.assign(hour=trips["ended_at"].dt.floor("h"))
         .groupby(
             [
                 "destination_station_id",
@@ -362,15 +334,9 @@ def create_station_hour_grid(
     )
 
     # Si no hubo viajes durante una hora, se interpreta como cero actividad.
-    hourly["departures"] = (
-        hourly["departures"]
-        .fillna(0)
-    )
+    hourly["departures"] = hourly["departures"].fillna(0)
 
-    hourly["arrivals"] = (
-        hourly["arrivals"]
-        .fillna(0)
-    )
+    hourly["arrivals"] = hourly["arrivals"].fillna(0)
 
     # Se incorporan los atributos estáticos de la estación.
     hourly = hourly.merge(
@@ -431,19 +397,11 @@ def add_imbalance_features(
     la capacidad de la estación. No utilizan información de t+1.
     """
 
-    hourly["net_flow"] = (
-        hourly["departures"]
-        - hourly["arrivals"]
-    )
+    hourly["net_flow"] = hourly["departures"] - hourly["arrivals"]
 
-    hourly["absolute_imbalance"] = (
-        hourly["net_flow"].abs()
-    )
+    hourly["absolute_imbalance"] = hourly["net_flow"].abs()
 
-    hourly["imbalance_ratio"] = (
-        hourly["absolute_imbalance"]
-        / hourly["capacity"]
-    )
+    hourly["imbalance_ratio"] = hourly["absolute_imbalance"] / hourly["capacity"]
 
     return hourly
 
@@ -491,45 +449,19 @@ def add_temporal_features(
     No utilizan información sobre viajes futuros.
     """
 
-    hourly["hour_of_day"] = (
-        hourly["hour"].dt.hour
-    )
+    hourly["hour_of_day"] = hourly["hour"].dt.hour
 
-    hourly["day_of_week"] = (
-        hourly["hour"].dt.dayofweek
-    )
+    hourly["day_of_week"] = hourly["hour"].dt.dayofweek
 
-    hourly["is_weekend"] = (
-        hourly["day_of_week"] >= 5
-    ).astype(int)
+    hourly["is_weekend"] = (hourly["day_of_week"] >= 5).astype(int)
 
-    hourly["hour_sin"] = np.sin(
-        2
-        * np.pi
-        * hourly["hour_of_day"]
-        / 24
-    )
+    hourly["hour_sin"] = np.sin(2 * np.pi * hourly["hour_of_day"] / 24)
 
-    hourly["hour_cos"] = np.cos(
-        2
-        * np.pi
-        * hourly["hour_of_day"]
-        / 24
-    )
+    hourly["hour_cos"] = np.cos(2 * np.pi * hourly["hour_of_day"] / 24)
 
-    hourly["dow_sin"] = np.sin(
-        2
-        * np.pi
-        * hourly["day_of_week"]
-        / 7
-    )
+    hourly["dow_sin"] = np.sin(2 * np.pi * hourly["day_of_week"] / 7)
 
-    hourly["dow_cos"] = np.cos(
-        2
-        * np.pi
-        * hourly["day_of_week"]
-        / 7
-    )
+    hourly["dow_cos"] = np.cos(2 * np.pi * hourly["day_of_week"] / 7)
 
     return hourly
 
@@ -585,9 +517,7 @@ def add_historical_features(
             "station_id",
             "hour",
         ]
-    ).reset_index(
-        drop=True
-    )
+    ).reset_index(drop=True)
 
     grouped = hourly.groupby(
         "station_id",
@@ -599,22 +529,13 @@ def add_historical_features(
         "arrivals",
         "net_flow",
     ]:
+        hourly[f"{column}_lag_1h"] = grouped[column].shift(1)
 
-        hourly[
-            f"{column}_lag_1h"
-        ] = grouped[column].shift(1)
+        hourly[f"{column}_lag_2h"] = grouped[column].shift(2)
 
-        hourly[
-            f"{column}_lag_2h"
-        ] = grouped[column].shift(2)
+        hourly[f"{column}_lag_24h"] = grouped[column].shift(24)
 
-        hourly[
-            f"{column}_lag_24h"
-        ] = grouped[column].shift(24)
-
-        hourly[
-            f"{column}_rolling_3h"
-        ] = grouped[column].transform(
+        hourly[f"{column}_rolling_3h"] = grouped[column].transform(
             lambda x: (
                 x.shift(1)
                 .rolling(
@@ -625,9 +546,7 @@ def add_historical_features(
             )
         )
 
-        hourly[
-            f"{column}_rolling_24h"
-        ] = grouped[column].transform(
+        hourly[f"{column}_rolling_24h"] = grouped[column].transform(
             lambda x: (
                 x.shift(1)
                 .rolling(
@@ -690,45 +609,23 @@ def add_next_hour_target(
             "station_id",
             "hour",
         ]
-    ).reset_index(
-        drop=True
-    )
+    ).reset_index(drop=True)
 
     grouped = hourly.groupby(
         "station_id",
         group_keys=False,
     )
 
-    hourly[
-        "target_departures"
-    ] = grouped[
-        "departures"
-    ].shift(-1)
+    hourly["target_departures"] = grouped["departures"].shift(-1)
 
-    hourly[
-        "target_arrivals"
-    ] = grouped[
-        "arrivals"
-    ].shift(-1)
+    hourly["target_arrivals"] = grouped["arrivals"].shift(-1)
 
-    hourly["target_net_flow"] = (
-        hourly["target_departures"]
-        - hourly["target_arrivals"]
-    )
+    hourly["target_net_flow"] = hourly["target_departures"] - hourly["target_arrivals"]
 
-    hourly[
-        "target_imbalance_ratio"
-    ] = (
-        hourly["target_net_flow"].abs()
-        / hourly["capacity"]
-    )
+    hourly["target_imbalance_ratio"] = hourly["target_net_flow"].abs() / hourly["capacity"]
 
     # La última observación de cada estación no tiene información de t+1.
-    hourly = hourly.dropna(
-        subset=[
-            "target_imbalance_ratio"
-        ]
-    ).copy()
+    hourly = hourly.dropna(subset=["target_imbalance_ratio"]).copy()
 
     return hourly
 
@@ -753,9 +650,7 @@ def build_station_hour_table(
     características para mantener el proceso modular y reutilizable.
     """
 
-    departures, arrivals = aggregate_station_flows(
-        trips
-    )
+    departures, arrivals = aggregate_station_flows(trips)
 
     hourly = create_station_hour_grid(
         departures=departures,
@@ -763,21 +658,13 @@ def build_station_hour_table(
         stations=stations,
     )
 
-    hourly = add_imbalance_features(
-        hourly
-    )
+    hourly = add_imbalance_features(hourly)
 
-    hourly = add_temporal_features(
-        hourly
-    )
+    hourly = add_temporal_features(hourly)
 
-    hourly = add_historical_features(
-        hourly
-    )
+    hourly = add_historical_features(hourly)
 
-    hourly = add_next_hour_target(
-        hourly
-    )
+    hourly = add_next_hour_target(hourly)
 
     # Se convierten infinitos a valores faltantes para evitar problemas
     # posteriores durante el entrenamiento del modelo.
@@ -791,10 +678,7 @@ def build_station_hour_table(
 
 @app.command()
 def main(
-    output_path: Path = (
-        PROCESSED_DATA_DIR
-        / "features_p2.parquet"
-    ),
+    output_path: Path = (PROCESSED_DATA_DIR / "features_p2.parquet"),
 ):
     """
     Genera el dataset final de características para P2.
@@ -810,17 +694,11 @@ def main(
     entrenamiento.
     """
 
-    logger.info(
-        "Generando features para P2..."
-    )
+    logger.info("Generando features para P2...")
 
-    trips = load_trips(
-        PROCESSED_DATA_DIR
-    )
+    trips = load_trips(PROCESSED_DATA_DIR)
 
-    stations = load_stations(
-        PROCESSED_DATA_DIR
-    )
+    stations = load_stations(PROCESSED_DATA_DIR)
 
     features = build_station_hour_table(
         trips,
@@ -839,16 +717,10 @@ def main(
         index=False,
     )
 
-    logger.success(
-        f"Features P2 generadas: "
-        f"{output_path.name} "
-        f"({len(features):,} observaciones)"
-    )
+    logger.success(f"Features P2 generadas: {output_path.name} ({len(features):,} observaciones)")
 
     logger.info(
-        "Risk=1/0 se calculará en train.py "
-        "con el percentil 80 calculado "
-        "únicamente sobre train."
+        "Risk=1/0 se calculará en train.py con el percentil 80 calculado únicamente sobre train."
     )
 
 

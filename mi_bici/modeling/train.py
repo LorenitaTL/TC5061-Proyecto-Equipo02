@@ -22,18 +22,16 @@ exclusivamente utilizando el conjunto de entrenamiento para evitar
 fuga de información.
 """
 
-from pathlib import Path
 import hashlib
+from pathlib import Path
 import subprocess
 
 import joblib
+from loguru import logger
 import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
-import typer
-from loguru import logger
-
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -45,6 +43,7 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+import typer
 
 from mi_bici.config import (
     IMPUTER_STRATEGY,
@@ -59,7 +58,6 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
-
 
 app = typer.Typer()
 
@@ -178,7 +176,6 @@ def calculate_file_hash(
     sha256 = hashlib.sha256()
 
     with path.open("rb") as file:
-
         for chunk in iter(
             lambda: file.read(1024 * 1024),
             b"",
@@ -208,18 +205,11 @@ def load_features(
     """
 
     if not input_path.is_file():
-        raise FileNotFoundError(
-            f"No se encontró el archivo de features: "
-            f"{input_path}"
-        )
+        raise FileNotFoundError(f"No se encontró el archivo de features: {input_path}")
 
-    logger.info(
-        f"Leyendo {input_path.name}"
-    )
+    logger.info(f"Leyendo {input_path.name}")
 
-    df = pd.read_parquet(
-        input_path
-    )
+    df = pd.read_parquet(input_path)
 
     df["hour"] = pd.to_datetime(
         df["hour"],
@@ -233,16 +223,9 @@ def load_features(
         ]
     ).copy()
 
-    df = df.sort_values(
-        "hour"
-    ).reset_index(
-        drop=True
-    )
+    df = df.sort_values("hour").reset_index(drop=True)
 
-    logger.success(
-        f"Observaciones cargadas: "
-        f"{len(df):,}"
-    )
+    logger.success(f"Observaciones cargadas: {len(df):,}")
 
     return df
 
@@ -280,46 +263,26 @@ def temporal_split(
         periodo más reciente → prueba
     """
 
-    unique_hours = np.sort(
-        df["hour"].unique()
-    )
+    unique_hours = np.sort(df["hour"].unique())
 
-    train_end = int(
-        len(unique_hours) * TRAIN_FRACTION
-    )
+    train_end = int(len(unique_hours) * TRAIN_FRACTION)
 
-    validation_end = int(
-        len(unique_hours) * (TRAIN_FRACTION + VALIDATION_FRACTION)
-    )
+    validation_end = int(len(unique_hours) * (TRAIN_FRACTION + VALIDATION_FRACTION))
 
-    train_hours = unique_hours[
-        :train_end
-    ]
+    train_hours = unique_hours[:train_end]
 
-    validation_hours = unique_hours[
-        train_end:validation_end
-    ]
+    validation_hours = unique_hours[train_end:validation_end]
 
-    test_hours = unique_hours[
-        validation_end:
-    ]
+    test_hours = unique_hours[validation_end:]
 
-    train = df[
-        df["hour"].isin(train_hours)
-    ].copy()
+    train = df[df["hour"].isin(train_hours)].copy()
 
-    validation = df[
-        df["hour"].isin(validation_hours)
-    ].copy()
+    validation = df[df["hour"].isin(validation_hours)].copy()
 
-    test = df[
-        df["hour"].isin(test_hours)
-    ].copy()
+    test = df[df["hour"].isin(test_hours)].copy()
 
     logger.info(
-        f"Train: {len(train):,} observaciones "
-        f"({train['hour'].min()} → "
-        f"{train['hour'].max()})"
+        f"Train: {len(train):,} observaciones ({train['hour'].min()} → {train['hour'].max()})"
     )
 
     logger.info(
@@ -328,11 +291,7 @@ def temporal_split(
         f"{validation['hour'].max()})"
     )
 
-    logger.info(
-        f"Test: {len(test):,} observaciones "
-        f"({test['hour'].min()} → "
-        f"{test['hour'].max()})"
-    )
+    logger.info(f"Test: {len(test):,} observaciones ({test['hour'].min()} → {test['hour'].max()})")
 
     return (
         train,
@@ -365,10 +324,7 @@ def create_risk_label(
     futura para definir la etiqueta.
     """
 
-    return (
-        df["target_imbalance_ratio"]
-        >= threshold
-    ).astype(int)
+    return (df["target_imbalance_ratio"] >= threshold).astype(int)
 
 
 # ---------------------------------------------------------
@@ -409,13 +365,9 @@ def evaluate_model(
     realmente riesgosa puede significar no intervenirla a tiempo.
     """
 
-    probabilities = model.predict_proba(
-        X
-    )[:, 1]
+    probabilities = model.predict_proba(X)[:, 1]
 
-    predictions = (
-        probabilities >= 0.5
-    ).astype(int)
+    predictions = (probabilities >= 0.5).astype(int)
 
     metrics = {
         "accuracy": accuracy_score(
@@ -461,10 +413,7 @@ def evaluate_model(
 
 @app.command()
 def main(
-    input_path: Path = (
-        PROCESSED_DATA_DIR
-        / "features_p2.parquet"
-    ),
+    input_path: Path = (PROCESSED_DATA_DIR / "features_p2.parquet"),
 ):
     """
     Entrena el modelo de clasificación de riesgo operacional P2.
@@ -483,30 +432,19 @@ def main(
     De esta forma el experimento puede ser reproducido y auditado.
     """
 
-    logger.info(
-        "Iniciando entrenamiento P2..."
-    )
+    logger.info("Iniciando entrenamiento P2...")
 
     # -----------------------------------------------------
     # 1. Configuración de MLflow
     # -----------------------------------------------------
 
-    mlflow.set_experiment(
-        EXPERIMENT_NAME
-    )
+    mlflow.set_experiment(EXPERIMENT_NAME)
 
     git_commit = get_git_commit()
 
-    data_version = calculate_file_hash(
-        input_path
-    )
+    data_version = calculate_file_hash(input_path)
 
-    with mlflow.start_run(
-        run_name=(
-            "P2-logistic-regression-baseline"
-        )
-    ) as run:
-
+    with mlflow.start_run(run_name=("P2-logistic-regression-baseline")) as run:
         # -------------------------------------------------
         # Tags de trazabilidad
         # -------------------------------------------------
@@ -524,30 +462,19 @@ def main(
             }
         )
 
-        logger.info(
-            f"MLflow Run ID: "
-            f"{run.info.run_id}"
-        )
+        logger.info(f"MLflow Run ID: {run.info.run_id}")
 
         # -------------------------------------------------
         # 2. Cargar datos
         # -------------------------------------------------
 
-        df = load_features(
-            input_path
-        )
+        df = load_features(input_path)
 
         # El rango temporal real de los datos utilizados se registra
         # después de cargar y validar el archivo.
-        data_start = (
-            df["hour"].min()
-            .isoformat()
-        )
+        data_start = df["hour"].min().isoformat()
 
-        data_end = (
-            df["hour"].max()
-            .isoformat()
-        )
+        data_end = df["hour"].max().isoformat()
 
         # -------------------------------------------------
         # 3. División temporal
@@ -563,37 +490,23 @@ def main(
         # 4. Umbral P80 calculado SOLO con train
         # -------------------------------------------------
 
-        risk_threshold = (
-            train[
-                "target_imbalance_ratio"
-            ].quantile(RISK_PERCENTILE)
+        risk_threshold = train["target_imbalance_ratio"].quantile(RISK_PERCENTILE)
+
+        logger.info(f"Umbral de riesgo P80 calculado sobre TRAIN: {risk_threshold:.6f}")
+
+        train["Risk"] = create_risk_label(
+            train,
+            risk_threshold,
         )
 
-        logger.info(
-            "Umbral de riesgo P80 calculado "
-            f"sobre TRAIN: "
-            f"{risk_threshold:.6f}"
+        validation["Risk"] = create_risk_label(
+            validation,
+            risk_threshold,
         )
 
-        train["Risk"] = (
-            create_risk_label(
-                train,
-                risk_threshold,
-            )
-        )
-
-        validation["Risk"] = (
-            create_risk_label(
-                validation,
-                risk_threshold,
-            )
-        )
-
-        test["Risk"] = (
-            create_risk_label(
-                test,
-                risk_threshold,
-            )
+        test["Risk"] = create_risk_label(
+            test,
+            risk_threshold,
         )
 
         # -------------------------------------------------
@@ -603,35 +516,24 @@ def main(
         mlflow.log_params(
             {
                 # Modelo
-                "model": (
-                    "LogisticRegression"
-                ),
+                "model": ("LogisticRegression"),
                 "class_weight": LOGISTIC_CLASS_WEIGHT,
                 "max_iter": LOGISTIC_MAX_ITER,
                 "solver": LOGISTIC_SOLVER,
                 "random_state": RANDOM_STATE,
-
                 # Preprocesamiento
                 "imputer_strategy": IMPUTER_STRATEGY,
                 "scaler": "StandardScaler",
-
                 # Definición del problema
                 "risk_percentile": RISK_PERCENTILE,
                 "prediction_horizon": "1h",
-
                 # División temporal
                 "train_fraction": TRAIN_FRACTION,
                 "validation_fraction": VALIDATION_FRACTION,
                 "test_fraction": TEST_FRACTION,
-
                 # Características
-                "n_features": len(
-                    FEATURE_COLUMNS
-                ),
-                "features": ",".join(
-                    FEATURE_COLUMNS
-                ),
-
+                "n_features": len(FEATURE_COLUMNS),
+                "features": ",".join(FEATURE_COLUMNS),
                 # Datos
                 "data_start": data_start,
                 "data_end": data_end,
@@ -645,27 +547,13 @@ def main(
 
         mlflow.log_metrics(
             {
-                "train_observations": float(
-                    len(train)
-                ),
-                "validation_observations": float(
-                    len(validation)
-                ),
-                "test_observations": float(
-                    len(test)
-                ),
-                "risk_threshold": float(
-                    risk_threshold
-                ),
-                "train_risk_rate": float(
-                    train["Risk"].mean()
-                ),
-                "validation_risk_rate": float(
-                    validation["Risk"].mean()
-                ),
-                "test_risk_rate": float(
-                    test["Risk"].mean()
-                ),
+                "train_observations": float(len(train)),
+                "validation_observations": float(len(validation)),
+                "test_observations": float(len(test)),
+                "risk_threshold": float(risk_threshold),
+                "train_risk_rate": float(train["Risk"].mean()),
+                "validation_risk_rate": float(validation["Risk"].mean()),
+                "test_risk_rate": float(test["Risk"].mean()),
             }
         )
 
@@ -673,23 +561,15 @@ def main(
         # 7. Preparar X / y
         # -------------------------------------------------
 
-        X_train = train[
-            FEATURE_COLUMNS
-        ]
+        X_train = train[FEATURE_COLUMNS]
 
         y_train = train["Risk"]
 
-        X_validation = validation[
-            FEATURE_COLUMNS
-        ]
+        X_validation = validation[FEATURE_COLUMNS]
 
-        y_validation = validation[
-            "Risk"
-        ]
+        y_validation = validation["Risk"]
 
-        X_test = test[
-            FEATURE_COLUMNS
-        ]
+        X_test = test[FEATURE_COLUMNS]
 
         y_test = test["Risk"]
 
@@ -701,9 +581,7 @@ def main(
             steps=[
                 (
                     "imputer",
-                    SimpleImputer(
-                        strategy=IMPUTER_STRATEGY
-                    ),
+                    SimpleImputer(strategy=IMPUTER_STRATEGY),
                 ),
                 (
                     "scaler",
@@ -722,73 +600,57 @@ def main(
             ]
         )
 
-        logger.info(
-            "Entrenando Logistic Regression..."
-        )
+        logger.info("Entrenando Logistic Regression...")
 
         model.fit(
             X_train,
             y_train,
         )
 
-        logger.success(
-            "Modelo entrenado."
-        )
+        logger.success("Modelo entrenado.")
 
         # -------------------------------------------------
         # 9. Evaluación
         # -------------------------------------------------
 
-        train_metrics = (
-            evaluate_model(
-                model,
-                X_train,
-                y_train,
-                "train",
-            )
+        train_metrics = evaluate_model(
+            model,
+            X_train,
+            y_train,
+            "train",
         )
 
-        validation_metrics = (
-            evaluate_model(
-                model,
-                X_validation,
-                y_validation,
-                "validation",
-            )
+        validation_metrics = evaluate_model(
+            model,
+            X_validation,
+            y_validation,
+            "validation",
         )
 
-        test_metrics = (
-            evaluate_model(
-                model,
-                X_test,
-                y_test,
-                "test",
-            )
+        test_metrics = evaluate_model(
+            model,
+            X_test,
+            y_test,
+            "test",
         )
 
         # -------------------------------------------------
         # 10. Registrar métricas en MLflow
         # -------------------------------------------------
 
-        for name, value in (
-            train_metrics.items()
-        ):
+        for name, value in train_metrics.items():
             mlflow.log_metric(
                 f"train_{name}",
                 float(value),
             )
 
-        for name, value in (
-            validation_metrics.items()
-        ):
+        for name, value in validation_metrics.items():
             mlflow.log_metric(
                 f"validation_{name}",
                 float(value),
             )
 
-        for name, value in (
-            test_metrics.items()
-        ):
+        for name, value in test_metrics.items():
             mlflow.log_metric(
                 f"test_{name}",
                 float(value),
@@ -839,13 +701,9 @@ def main(
         # 12. Registrar artifacts en MLflow
         # -------------------------------------------------
 
-        mlflow.log_artifact(
-            str(METRICS_PATH)
-        )
+        mlflow.log_artifact(str(METRICS_PATH))
 
-        mlflow.log_artifact(
-            str(THRESHOLD_PATH)
-        )
+        mlflow.log_artifact(str(THRESHOLD_PATH))
 
         # -------------------------------------------------
         # 13. Registrar modelo en MLflow
@@ -854,44 +712,22 @@ def main(
         mlflow.sklearn.log_model(
             model,
             name="p2_risk_model",
-            skops_trusted_types=[
-                "numpy.dtype"
-            ],
+            skops_trusted_types=["numpy.dtype"],
         )
 
-        logger.success(
-            "Modelo registrado en MLflow."
-        )
+        logger.success("Modelo registrado en MLflow.")
 
-        logger.success(
-            f"MLflow Run ID: "
-            f"{run.info.run_id}"
-        )
+        logger.success(f"MLflow Run ID: {run.info.run_id}")
 
-        logger.success(
-            f"Commit de Git: "
-            f"{git_commit}"
-        )
+        logger.success(f"Commit de Git: {git_commit}")
 
-        logger.success(
-            f"Versión de datos: "
-            f"{data_version[:12]}..."
-        )
+        logger.success(f"Versión de datos: {data_version[:12]}...")
 
-        logger.success(
-            f"Modelo local: "
-            f"{MODEL_PATH}"
-        )
+        logger.success(f"Modelo local: {MODEL_PATH}")
 
-        logger.success(
-            f"Métricas: "
-            f"{METRICS_PATH}"
-        )
+        logger.success(f"Métricas: {METRICS_PATH}")
 
-        logger.success(
-            f"Threshold: "
-            f"{THRESHOLD_PATH}"
-        )
+        logger.success(f"Threshold: {THRESHOLD_PATH}")
 
 
 if __name__ == "__main__":
