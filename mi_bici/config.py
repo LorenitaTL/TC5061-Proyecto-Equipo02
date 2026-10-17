@@ -51,3 +51,26 @@ TRAIN_END_MONTH = "2025-12"
 STATIONS_FILENAME = "nomenclatura_2026_09.csv"
 
 REFERENCES_DIR = PROJ_ROOT / "references"
+
+# ---------------------------------------------------------
+# Configuración del modelo P2
+# ---------------------------------------------------------
+
+# La semilla RANDOM_STATE se define en la sección "Reproducibility".
+
+# División temporal de los datos.
+TRAIN_FRACTION = 0.70
+VALIDATION_FRACTION = 0.15
+TEST_FRACTION = 0.15
+
+# Percentil utilizado para definir el umbral de alto riesgo.
+RISK_PERCENTILE = 0.80
+
+# Hiperparámetros de Logistic Regression.
+LOGISTIC_MAX_ITER = 1000
+LOGISTIC_CLASS_WEIGHT = "balanced"
+LOGISTIC_SOLVER = "lbfgs"
+
+# Estrategia de imputación de valores faltantes.
+
+IMPUTER_STRATEGY = "median"
