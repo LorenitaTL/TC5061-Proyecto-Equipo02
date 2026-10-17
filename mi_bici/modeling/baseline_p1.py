@@ -10,6 +10,7 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
+from mi_bici.modeling.splits_p1 import temporal_masks
 
 DATASET = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
 TRACKING_URI = "sqlite:///mlflow.db"
@@ -29,10 +30,8 @@ def main() -> None:
         ],
     )
 
-    validation = df.loc[
-        (df["hour"] >= "2026-04-01")
-        & (df["hour"] < "2026-06-01")
-    ].copy()
+    masks = temporal_masks(df["hour"])
+    validation = df.loc[masks["validation"]].copy()
 
     if validation.empty:
         raise ValueError("La partición de validación está vacía.")

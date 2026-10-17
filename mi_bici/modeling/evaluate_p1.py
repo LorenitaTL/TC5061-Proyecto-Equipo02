@@ -1,6 +1,8 @@
 
 """Evaluación final del modelo P1 sobre junio de 2026."""
 
+import argparse
+
 from loguru import logger
 import mlflow
 import mlflow.sklearn
@@ -9,9 +11,21 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
+from mi_bici.modeling.splits_p1 import temporal_masks
 
 TRACKING_URI = "sqlite:///mlflow.db"
-MODEL_URI = "models:/m-2068e241c1ef41f4b735648a1fd89f0d"
+
+def parse_args() -> argparse.Namespace:
+    """Obtiene la URI del modelo que queremos evaluar."""
+    parser = argparse.ArgumentParser(
+        description="Evaluación final de demanda horaria MiBici P1"
+    )
+    parser.add_argument(
+        "--model-uri",
+        required=True,
+        help="URI del modelo registrado en MLflow",
+    )
+    return parser.parse_args()
 
 FEATURES = [
     "hour_of_day",
@@ -25,10 +39,11 @@ FEATURES = [
 
 def main() -> None:
     """Evalúa el modelo previamente seleccionado sin reentrenarlo."""
+    args = parse_args()
     mlflow.set_tracking_uri(TRACKING_URI)
 
     logger.info("Cargando modelo registrado...")
-    model = mlflow.sklearn.load_model(MODEL_URI)
+    model = mlflow.sklearn.load_model(args.model_uri)
 
     dataset = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
 
@@ -37,7 +52,8 @@ def main() -> None:
         columns=["hour", "trip_count", *FEATURES],
     )
 
-    test = df.loc[df["hour"] >= "2026-06-01"].copy()
+    masks = temporal_masks(df["hour"])
+    test = df.loc[masks["test"]].copy()
 
     X_test = test[FEATURES].astype("float32")
     y_test = test["trip_count"]
@@ -56,7 +72,7 @@ def main() -> None:
     }
 
     with mlflow.start_run(run_name="evaluacion_final_p1_v2"):
-        mlflow.log_param("model_uri", MODEL_URI)
+        mlflow.log_param("model_uri", args.model_uri)
         mlflow.log_param("test_period", "2026-06")
         mlflow.log_metrics(metrics)
 

@@ -10,6 +10,7 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
+from mi_bici.modeling.splits_p1 import temporal_masks
 
 DATASET = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
 TRACKING_URI = "sqlite:///mlflow.db"
@@ -27,7 +28,6 @@ FEATURES = [
 RANDOM_STATE = 42
 SAMPLE_SIZE = 1_000_000
 
-
 def main() -> None:
     """Entrena, evalúa y registra el modelo candidato."""
 
@@ -36,11 +36,10 @@ def main() -> None:
         columns=["hour", "trip_count", *FEATURES],
     )
 
-    train = df.loc[df["hour"] < "2026-04-01"]
-    validation = df.loc[
-        (df["hour"] >= "2026-04-01")
-        & (df["hour"] < "2026-06-01")
-    ]
+    masks = temporal_masks(df["hour"])
+
+    train = df.loc[masks["train"]]
+    validation = df.loc[masks["validation"]]
 
     train_sample = train.sample(
         n=min(SAMPLE_SIZE, len(train)),
