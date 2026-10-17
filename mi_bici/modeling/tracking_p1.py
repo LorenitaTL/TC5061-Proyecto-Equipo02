@@ -10,7 +10,7 @@ import mlflow
 from mi_bici.config import PROJ_ROOT, REFERENCES_DIR
 from mi_bici.modeling.splits_p1 import TRAIN_END, VALIDATION_END
 
-DEFAULT_EXPERIMENT_NAME = "MiBici_P1_Demanda_Horaria"
+DEFAULT_EXPERIMENT_NAME = "mibici-equipo02-P1"
 TRACKING_URI = "sqlite:///mlflow.db"
 
 

@@ -11,8 +11,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
 from mi_bici.modeling.splits_p1 import temporal_masks
-
-TRACKING_URI = "sqlite:///mlflow.db"
+from mi_bici.modeling.tracking_p1 import configure_mlflow, log_p1_traceability
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,7 +38,7 @@ FEATURES = [
 def main() -> None:
     """Evalúa el modelo previamente seleccionado sin reentrenarlo."""
     args = parse_args()
-    mlflow.set_tracking_uri(TRACKING_URI)
+    configure_mlflow()
 
     logger.info("Cargando modelo registrado...")
     model = mlflow.sklearn.load_model(args.model_uri)
@@ -67,6 +66,7 @@ def main() -> None:
     }
 
     with mlflow.start_run(run_name="evaluacion_final_p1_v2"):
+        log_p1_traceability()
         mlflow.log_param("model_uri", args.model_uri)
         mlflow.log_param("test_period", "2026-06")
         mlflow.log_metrics(metrics)
