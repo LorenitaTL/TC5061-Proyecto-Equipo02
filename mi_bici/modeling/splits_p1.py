@@ -1,4 +1,3 @@
-
 """Particiones cronológicas del problema P1."""
 
 import pandas as pd

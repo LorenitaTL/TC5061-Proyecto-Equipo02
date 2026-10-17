@@ -1,4 +1,3 @@
-
 """Evaluación final del modelo P1 sobre junio de 2026."""
 
 import argparse
@@ -15,17 +14,17 @@ from mi_bici.modeling.splits_p1 import temporal_masks
 
 TRACKING_URI = "sqlite:///mlflow.db"
 
+
 def parse_args() -> argparse.Namespace:
     """Obtiene la URI del modelo que queremos evaluar."""
-    parser = argparse.ArgumentParser(
-        description="Evaluación final de demanda horaria MiBici P1"
-    )
+    parser = argparse.ArgumentParser(description="Evaluación final de demanda horaria MiBici P1")
     parser.add_argument(
         "--model-uri",
         required=True,
         help="URI del modelo registrado en MLflow",
     )
     return parser.parse_args()
+
 
 FEATURES = [
     "hour_of_day",
@@ -62,12 +61,8 @@ def main() -> None:
     predictions = np.clip(model.predict(X_test), 0, None)
 
     metrics = {
-        "mae_test": float(
-            mean_absolute_error(y_test, predictions)
-        ),
-        "rmse_test": float(
-            np.sqrt(mean_squared_error(y_test, predictions))
-        ),
+        "mae_test": float(mean_absolute_error(y_test, predictions)),
+        "rmse_test": float(np.sqrt(mean_squared_error(y_test, predictions))),
         "n_test": len(test),
     }
 

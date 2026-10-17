@@ -1,4 +1,3 @@
-
 """Registro del baseline estacional de demanda horaria en MLflow."""
 
 import json
@@ -38,21 +37,14 @@ def main() -> None:
 
     y_true = validation["trip_count"]
     y_pred = (
-        validation["lag_168h"]
-        .fillna(validation["lag_24h"])
-        .fillna(validation["lag_1h"])
-        .fillna(0)
+        validation["lag_168h"].fillna(validation["lag_24h"]).fillna(validation["lag_1h"]).fillna(0)
     )
 
     metrics = {
         "mae_val": float(mean_absolute_error(y_true, y_pred)),
-        "rmse_val": float(
-            np.sqrt(mean_squared_error(y_true, y_pred))
-        ),
+        "rmse_val": float(np.sqrt(mean_squared_error(y_true, y_pred))),
         "n_validation": len(validation),
-        "zero_predictions_pct": float(
-            100 * (y_pred == 0).mean()
-        ),
+        "zero_predictions_pct": float(100 * (y_pred == 0).mean()),
     }
 
     mlflow.set_tracking_uri(TRACKING_URI)
@@ -93,12 +85,8 @@ def main() -> None:
         )
 
         logger.success(f"Run ID: {run.info.run_id}")
-        logger.success(
-            f"MAE validación: {metrics['mae_val']:.4f}"
-        )
-        logger.success(
-            f"RMSE validación: {metrics['rmse_val']:.4f}"
-        )
+        logger.success(f"MAE validación: {metrics['mae_val']:.4f}")
+        logger.success(f"RMSE validación: {metrics['rmse_val']:.4f}")
         logger.success(f"Experimento: {EXPERIMENT_NAME}")
 
     print("\nMétricas registradas:")

@@ -1,4 +1,3 @@
-
 """Pruebas de construcción de variables para P1."""
 
 import pandas as pd
@@ -11,9 +10,7 @@ def test_hourly_grid_fills_missing_hours() -> None:
     hourly = pd.DataFrame(
         {
             "station_id": ["10", "10"],
-            "hour": pd.to_datetime(
-                ["2026-06-01 08:00", "2026-06-01 10:00"]
-            ),
+            "hour": pd.to_datetime(["2026-06-01 08:00", "2026-06-01 10:00"]),
             "trip_count": [3, 5],
         }
     )
@@ -30,9 +27,7 @@ def test_hourly_grid_preserves_station_identity() -> None:
     hourly = pd.DataFrame(
         {
             "station_id": ["10", "20"],
-            "hour": pd.to_datetime(
-                ["2026-06-01 08:00", "2026-06-01 08:00"]
-            ),
+            "hour": pd.to_datetime(["2026-06-01 08:00", "2026-06-01 08:00"]),
             "trip_count": [3, 7],
         }
     )
@@ -69,9 +64,7 @@ def test_lags_respect_station_and_time() -> None:
     result = add_features(df)
 
     for station, offset in [("10", 0), ("20", 1000)]:
-        subset = result.loc[
-            result["station_id"] == station
-        ].reset_index(drop=True)
+        subset = result.loc[result["station_id"] == station].reset_index(drop=True)
 
         assert subset.loc[168, "lag_1h"] == offset + 167
         assert subset.loc[168, "lag_24h"] == offset + 144
@@ -85,9 +78,7 @@ def test_calendar_features() -> None:
     df = pd.DataFrame(
         {
             "station_id": ["10", "10"],
-            "hour": pd.to_datetime(
-                ["2026-06-05 08:00", "2026-06-06 14:00"]
-            ),
+            "hour": pd.to_datetime(["2026-06-05 08:00", "2026-06-06 14:00"]),
             "trip_count": [4, 2],
         }
     )

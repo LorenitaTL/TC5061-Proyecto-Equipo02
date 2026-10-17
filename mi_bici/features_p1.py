@@ -1,4 +1,3 @@
-
 """Construcción del dataset analítico para P1: demanda horaria."""
 
 from loguru import logger
@@ -10,14 +9,10 @@ from mi_bici.config import PROCESSED_DATA_DIR
 def aggregate_hourly_trips() -> pd.DataFrame:
     """Agrega los viajes iniciados por estación y hora."""
 
-    files = sorted(
-        PROCESSED_DATA_DIR.glob("viajes_????_??.parquet")
-    )
+    files = sorted(PROCESSED_DATA_DIR.glob("viajes_????_??.parquet"))
 
     if not files:
-        raise FileNotFoundError(
-            "No se encontraron archivos de viajes procesados."
-        )
+        raise FileNotFoundError("No se encontraron archivos de viajes procesados.")
 
     monthly = []
 
@@ -32,9 +27,7 @@ def aggregate_hourly_trips() -> pd.DataFrame:
         )
 
         valid = df.loc[
-            df["started_at"].notna()
-            & df["origin_station_id"].notna()
-            & ~df["invalid_start"]
+            df["started_at"].notna() & df["origin_station_id"].notna() & ~df["invalid_start"]
         ].copy()
 
         valid["hour"] = valid["started_at"].dt.floor("h")
@@ -43,9 +36,7 @@ def aggregate_hourly_trips() -> pd.DataFrame:
             valid.groupby(["origin_station_id", "hour"])
             .size()
             .reset_index(name="trip_count")
-            .rename(
-                columns={"origin_station_id": "station_id"}
-            )
+            .rename(columns={"origin_station_id": "station_id"})
         )
 
         monthly.append(summary)
@@ -53,15 +44,11 @@ def aggregate_hourly_trips() -> pd.DataFrame:
 
     hourly = (
         pd.concat(monthly, ignore_index=True)
-        .groupby(["station_id", "hour"], as_index=False)[
-            "trip_count"
-        ]
+        .groupby(["station_id", "hour"], as_index=False)["trip_count"]
         .sum()
     )
 
-    return hourly.sort_values(
-        ["station_id", "hour"]
-    ).reset_index(drop=True)
+    return hourly.sort_values(["station_id", "hour"]).reset_index(drop=True)
 
 
 def build_hourly_grid(hourly: pd.DataFrame) -> pd.DataFrame:
@@ -79,10 +66,12 @@ def build_hourly_grid(hourly: pd.DataFrame) -> pd.DataFrame:
             freq="h",
         )
 
-        station_grid = pd.DataFrame({
-            "station_id": station_id,
-            "hour": hours,
-        })
+        station_grid = pd.DataFrame(
+            {
+                "station_id": station_id,
+                "hour": hours,
+            }
+        )
 
         stations.append(station_grid)
 
@@ -95,13 +84,9 @@ def build_hourly_grid(hourly: pd.DataFrame) -> pd.DataFrame:
         validate="one_to_one",
     )
 
-    result["trip_count"] = (
-        result["trip_count"].fillna(0).astype("int32")
-    )
+    result["trip_count"] = result["trip_count"].fillna(0).astype("int32")
 
-    return result.sort_values(
-        ["station_id", "hour"]
-    ).reset_index(drop=True)
+    return result.sort_values(["station_id", "hour"]).reset_index(drop=True)
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -111,9 +96,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
     result["hour_of_day"] = result["hour"].dt.hour
     result["day_of_week"] = result["hour"].dt.dayofweek
-    result["is_weekend"] = (
-        result["day_of_week"] >= 5
-    ).astype("int8")
+    result["is_weekend"] = (result["day_of_week"] >= 5).astype("int8")
 
     grouped = result.groupby("station_id")["trip_count"]
 
@@ -128,9 +111,7 @@ def main() -> None:
 
     hourly = aggregate_hourly_trips()
 
-    logger.info(
-        f"Viajes agregados: {hourly['trip_count'].sum():,}"
-    )
+    logger.info(f"Viajes agregados: {hourly['trip_count'].sum():,}")
 
     grid = build_hourly_grid(hourly)
     features = add_features(grid)
@@ -144,9 +125,7 @@ def main() -> None:
         compression="snappy",
     )
 
-    logger.success(
-        f"Dataset P1 generado: {len(features):,} filas"
-    )
+    logger.success(f"Dataset P1 generado: {len(features):,} filas")
     logger.success(f"Archivo: {output}")
 
 

@@ -1,4 +1,3 @@
-
 """Pruebas de las particiones temporales de P1."""
 
 import pandas as pd
@@ -28,16 +27,12 @@ def test_partition_boundaries() -> None:
 
 def test_partitions_are_exclusive_and_complete() -> None:
     """Ninguna observación pertenece a dos conjuntos."""
-    hours = pd.Series(
-        pd.date_range("2026-03-30", periods=100, freq="D")
-    )
+    hours = pd.Series(pd.date_range("2026-03-30", periods=100, freq="D"))
 
     masks = temporal_masks(hours)
 
     membership = (
-        masks["train"].astype(int)
-        + masks["validation"].astype(int)
-        + masks["test"].astype(int)
+        masks["train"].astype(int) + masks["validation"].astype(int) + masks["test"].astype(int)
     )
 
     assert (membership == 1).all()

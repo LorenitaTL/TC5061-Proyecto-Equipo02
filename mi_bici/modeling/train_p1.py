@@ -1,4 +1,3 @@
-
 """Entrenamiento del primer modelo candidato para P1."""
 
 from loguru import logger
@@ -27,6 +26,7 @@ FEATURES = [
 
 RANDOM_STATE = 42
 SAMPLE_SIZE = 1_000_000
+
 
 def main() -> None:
     """Entrena, evalúa y registra el modelo candidato."""
@@ -75,12 +75,8 @@ def main() -> None:
         predictions = np.clip(predictions, 0, None)
 
         metrics = {
-            "mae_val": float(
-                mean_absolute_error(y_val, predictions)
-            ),
-            "rmse_val": float(
-                np.sqrt(mean_squared_error(y_val, predictions))
-            ),
+            "mae_val": float(mean_absolute_error(y_val, predictions)),
+            "rmse_val": float(np.sqrt(mean_squared_error(y_val, predictions))),
         }
 
         mlflow.log_params(
@@ -122,7 +118,7 @@ def main() -> None:
             name="modelo_p1",
             skops_trusted_types=[
                 "sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor"
-            ]
+            ],
         )
 
         logger.success(f"Run ID: {run.info.run_id}")
