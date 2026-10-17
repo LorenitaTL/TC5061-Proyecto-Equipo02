@@ -10,10 +10,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
 from mi_bici.modeling.splits_p1 import temporal_masks
+from mi_bici.modeling.tracking_p1 import configure_mlflow, log_p1_traceability
 
 DATASET = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
-TRACKING_URI = "sqlite:///mlflow.db"
-EXPERIMENT_NAME = "MiBici_P1_Demanda_Horaria"
 
 FEATURES = [
     "hour_of_day",
@@ -61,10 +60,10 @@ def main() -> None:
         random_state=RANDOM_STATE,
     )
 
-    mlflow.set_tracking_uri(TRACKING_URI)
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    configure_mlflow()
 
     with mlflow.start_run(run_name="hist_gradient_boosting_v2") as run:
+        log_p1_traceability()
         logger.info("Iniciando entrenamiento...")
         model.fit(X_train, y_train)
 
@@ -89,8 +88,6 @@ def main() -> None:
                 "l2_regularization": 1.0,
                 "random_state": RANDOM_STATE,
                 "sample_size": len(train_sample),
-                "validation_start": "2026-04-01",
-                "validation_end": "2026-05-31",
                 "features": ",".join(FEATURES),
             }
         )

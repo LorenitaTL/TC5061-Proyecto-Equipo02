@@ -10,10 +10,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 from mi_bici.config import PROCESSED_DATA_DIR
 from mi_bici.modeling.splits_p1 import temporal_masks
+from mi_bici.modeling.tracking_p1 import configure_mlflow, log_p1_traceability
 
 DATASET = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
-TRACKING_URI = "sqlite:///mlflow.db"
-EXPERIMENT_NAME = "MiBici_P1_Demanda_Horaria"
 
 
 def main() -> None:
@@ -47,18 +46,14 @@ def main() -> None:
         "zero_predictions_pct": float(100 * (y_pred == 0).mean()),
     }
 
-    mlflow.set_tracking_uri(TRACKING_URI)
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    experiment_name = configure_mlflow()
 
     with mlflow.start_run(run_name="baseline_semanal_v1") as run:
+        log_p1_traceability()
         mlflow.log_params(
             {
                 "problem": "P1_regresion_demanda_horaria",
                 "baseline": "lag_168h_lag_24h_lag_1h_zero",
-                "train_end": "2026-03-31",
-                "validation_start": "2026-04-01",
-                "validation_end": "2026-05-31",
-                "test_start": "2026-06-01",
                 "target": "trip_count",
             }
         )
@@ -87,7 +82,7 @@ def main() -> None:
         logger.success(f"Run ID: {run.info.run_id}")
         logger.success(f"MAE validación: {metrics['mae_val']:.4f}")
         logger.success(f"RMSE validación: {metrics['rmse_val']:.4f}")
-        logger.success(f"Experimento: {EXPERIMENT_NAME}")
+        logger.success(f"Experimento: {experiment_name}")
 
     print("\nMétricas registradas:")
     print(json.dumps(metrics, indent=2))
