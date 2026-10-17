@@ -268,6 +268,21 @@ La ingesta procesa los archivos mensualmente para reducir la presión sobre la m
 
 Las versiones directas de las principales dependencias se declaran en `requirements.txt`. Los hashes identifican las versiones exactas de los archivos originales y transformados utilizadas en esta ejecución. Regenerar Parquet con versiones diferentes de las bibliotecas podría modificar sus hashes.
 
+## P1. Predicción de demanda horaria
+
+Se implementó un modelo de regresión para predecir la cantidad de viajes
+iniciados por estación y hora, utilizando variables temporales y rezagos
+históricos.
+
+El componente incluye la construcción del dataset analítico, un baseline
+estacional, entrenamiento y evaluación cronológica, seguimiento de
+experimentos con MLflow y pruebas automatizadas.
+
+El modelo seleccionado, HistGradientBoostingRegressor, redujo el MAE de
+prueba aproximadamente un 14 % y el RMSE un 25 % respecto al baseline.
+
+**Documentación técnica, resultados e instrucciones de reproducción:**
+[Predicción de demanda horaria (P1)](docs/p1_prediccion_demanda.md).
 
 ## P2 — Predicción de riesgo operacional
 
@@ -389,7 +404,6 @@ python -m mi_bici.modeling.train
 ```
 
 El script realiza la carga de las características procesadas, genera la partición temporal, calcula el umbral P80 a partir del conjunto de entrenamiento, entrena el pipeline de clasificación, evalúa el modelo en train, validation y test, y registra el experimento y sus artefactos en MLflow.
-
 
 ## Project Organization
 
