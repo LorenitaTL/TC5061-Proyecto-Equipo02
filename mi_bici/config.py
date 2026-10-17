@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -21,6 +22,15 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
+# Reproducibility
+RANDOM_STATE = 42
+
+# MLflow
+TEAM = "equipo02"
+MLFLOW_EXPERIMENT_NAME = f"mibici-{TEAM}"
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{PROJ_ROOT / 'mlflow.db'}")
+MLFLOW_ARTIFACTS_DIR = PROJ_ROOT / "mlartifacts"
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:
@@ -36,6 +46,7 @@ MIBICI_BASE_URL = "https://mibici.net"
 
 DATA_START_MONTH = "2025-01"
 DATA_END_MONTH = "2026-06"
+TRAIN_END_MONTH = "2025-12"
 
 STATIONS_FILENAME = "nomenclatura_2026_09.csv"
 
@@ -45,8 +56,7 @@ REFERENCES_DIR = PROJ_ROOT / "references"
 # Configuración del modelo P2
 # ---------------------------------------------------------
 
-# Semilla utilizada para garantizar reproducibilidad.
-RANDOM_STATE = 42
+# La semilla RANDOM_STATE se define en la sección "Reproducibility".
 
 # División temporal de los datos.
 TRAIN_FRACTION = 0.70

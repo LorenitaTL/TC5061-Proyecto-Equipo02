@@ -24,7 +24,6 @@ fuga de información.
 
 import hashlib
 from pathlib import Path
-import subprocess
 
 import joblib
 from loguru import logger
@@ -58,7 +57,7 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
-from mi_bici.modeling.tracking_p1 import TRACKING_URI, get_data_version
+from mi_bici.modeling.tracking import configure_mlflow, log_traceability
 
 app = typer.Typer()
 
@@ -72,14 +71,6 @@ MODEL_DIR = PROJ_ROOT / "models"
 MODEL_PATH = MODEL_DIR / "p2_risk_model.joblib"
 METRICS_PATH = MODEL_DIR / "p2_metrics.csv"
 THRESHOLD_PATH = MODEL_DIR / "p2_threshold.txt"
-
-
-# ---------------------------------------------------------
-# Configuración de MLflow
-# ---------------------------------------------------------
-
-# Misma convención y misma base de MLflow que P1 (tracking_p1).
-EXPERIMENT_NAME = "mibici-equipo02-P2"
 
 
 # ---------------------------------------------------------
@@ -133,36 +124,6 @@ FEATURE_COLUMNS = [
 # ---------------------------------------------------------
 # Funciones auxiliares para reproducibilidad
 # ---------------------------------------------------------
-
-
-def get_git_commit() -> str:
-    """
-    Obtiene el commit de Git correspondiente al código utilizado.
-
-    Esto permite relacionar un experimento de MLflow con la versión
-    exacta del código que produjo el modelo.
-    """
-
-    try:
-        result = subprocess.run(
-            [
-                "git",
-                "rev-parse",
-                "HEAD",
-            ],
-            cwd=PROJ_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-
-        return result.stdout.strip()
-
-    except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-    ):
-        return "unknown"
 
 
 def calculate_file_hash(
@@ -440,28 +401,20 @@ def main(
     # 1. Configuración de MLflow
     # -----------------------------------------------------
 
-    mlflow.set_tracking_uri(TRACKING_URI)
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    configure_mlflow()
 
-    git_commit = get_git_commit()
-
-    data_version = calculate_file_hash(input_path)
-    source_data_version = get_data_version()
+    features_data_version = calculate_file_hash(input_path)
 
     with mlflow.start_run(run_name=("P2-logistic-regression-baseline")) as run:
         # -------------------------------------------------
         # Tags de trazabilidad
         # -------------------------------------------------
 
+        log_traceability("P2")
         mlflow.set_tags(
             {
-                "team": "Equipo02",
                 "project": "MiBici",
-                "task": "P2",
-                "question": "P2",
                 "business_question": BUSINESS_QUESTION,
-                "git_commit": git_commit,
-                "data_version": data_version,
                 "prediction_horizon": "1 hour",
                 "unit_of_analysis": "station-hour",
             }
@@ -543,9 +496,7 @@ def main(
                 "data_start": data_start,
                 "data_end": data_end,
                 "data_file": input_path.name,
-                "data_version": data_version,
-                "source_data_version": source_data_version,
-                "source_manifest": "references/data_manifest.json",
+                "features_data_version": features_data_version,
             }
         )
 
@@ -727,9 +678,7 @@ def main(
 
         logger.success(f"MLflow Run ID: {run.info.run_id}")
 
-        logger.success(f"Commit de Git: {git_commit}")
-
-        logger.success(f"Versión de datos: {data_version[:12]}...")
+        logger.success(f"Versión del archivo de features: {features_data_version[:12]}...")
 
         logger.success(f"Modelo local: {MODEL_PATH}")
 
