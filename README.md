@@ -363,9 +363,9 @@ Resultados obtenidos sobre los tres conjuntos:
 | Validation | 0.7391 | 0.5597 | 0.6370 | 0.8410 |
 | Test | 0.7283 | 0.5524 | 0.6283 | 0.8364 |
 
-El experimento se registra en MLflow bajo `P2-operational-risk`.
+El experimento se registra en MLflow bajo `mibici-equipo02-P2`, en la misma base local que P1 (`sqlite:///mlflow.db`). El run se identifica con las etiquetas `team=Equipo02`, `question=P2` y `git_commit`.
 
-**Run final:** `e4385d55f1614c5989436bf066c9d791`
+Los identificadores de los runs dependen de cada ejecución local, por lo que pueden variar entre integrantes.
 
 El entrenamiento puede reproducirse desde la raíz del repositorio mediante:
 

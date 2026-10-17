@@ -58,6 +58,7 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
+from mi_bici.modeling.tracking_p1 import TRACKING_URI, get_data_version
 
 app = typer.Typer()
 
@@ -77,7 +78,8 @@ THRESHOLD_PATH = MODEL_DIR / "p2_threshold.txt"
 # Configuración de MLflow
 # ---------------------------------------------------------
 
-EXPERIMENT_NAME = "P2-operational-risk"
+# Misma convención y misma base de MLflow que P1 (tracking_p1).
+EXPERIMENT_NAME = "mibici-equipo02-P2"
 
 
 # ---------------------------------------------------------
@@ -438,11 +440,13 @@ def main(
     # 1. Configuración de MLflow
     # -----------------------------------------------------
 
+    mlflow.set_tracking_uri(TRACKING_URI)
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     git_commit = get_git_commit()
 
     data_version = calculate_file_hash(input_path)
+    source_data_version = get_data_version()
 
     with mlflow.start_run(run_name=("P2-logistic-regression-baseline")) as run:
         # -------------------------------------------------
@@ -454,7 +458,8 @@ def main(
                 "team": "Equipo02",
                 "project": "MiBici",
                 "task": "P2",
-                "question": BUSINESS_QUESTION,
+                "question": "P2",
+                "business_question": BUSINESS_QUESTION,
                 "git_commit": git_commit,
                 "data_version": data_version,
                 "prediction_horizon": "1 hour",
@@ -538,6 +543,9 @@ def main(
                 "data_start": data_start,
                 "data_end": data_end,
                 "data_file": input_path.name,
+                "data_version": data_version,
+                "source_data_version": source_data_version,
+                "source_manifest": "references/data_manifest.json",
             }
         )
 
