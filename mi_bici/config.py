@@ -53,6 +53,14 @@ STATIONS_FILENAME = "nomenclatura_2026_09.csv"
 REFERENCES_DIR = PROJ_ROOT / "references"
 
 # ---------------------------------------------------------
+# Configuración del modelo P1
+# ---------------------------------------------------------
+
+# Fechas de corte (exclusivas) de la partición cronológica.
+P1_TRAIN_END = "2026-04-01"
+P1_VALIDATION_END = "2026-06-01"
+
+# ---------------------------------------------------------
 # Configuración del modelo P2
 # ---------------------------------------------------------
 

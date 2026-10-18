@@ -2,8 +2,10 @@
 
 import pandas as pd
 
-TRAIN_END = pd.Timestamp("2026-04-01")
-VALIDATION_END = pd.Timestamp("2026-06-01")
+from mi_bici.config import P1_TRAIN_END, P1_VALIDATION_END
+
+TRAIN_END = pd.Timestamp(P1_TRAIN_END)
+VALIDATION_END = pd.Timestamp(P1_VALIDATION_END)
 
 
 def temporal_masks(
