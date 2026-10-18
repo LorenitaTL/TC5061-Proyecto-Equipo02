@@ -4,6 +4,23 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
+  - **Propósito** El proyecto busca generar predictibilidad operativa en el futuro basado en tiempos, origen y destino
+  de los usuarios de MiBici así como obtener información respecto a riesgos opertivos como contar con anclajes
+  disponibles para las bicicletas o evitar quedarse sin bicicletas disponibles, así como identificar
+  los patrones de uso y similitud de los patrones uso en las diferentes estaciones.
+
+  - **Preguntas del proyecto:**
+| ID | Pregunta de negocio | Tipo de tarea | Quién la usaría |
+| :--- | :--- | :--- | :--- |
+| **P1** | ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro? | Regresión | Operador del sistema, para planear la flota. |
+| **P2** | ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes disponibles en un periodo futuro? | Clasificación | Equipo de rebalanceo de bicicletas. |
+| **P3** | ¿Qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad? | Clustering | Planeación urbana y expansión del sistema. |
+  - **Integrantes**
+Ariadna Meliza Martínez Anaya - A01797975@tec.mx
+Claudio Salvador Rivas Anguiano - A01840294@tec.mx
+Lorena Trujillo Landeros - A01797858@tec.mx
+Eduardo Valencia Guzmán - A01631738@tec.mx
+
 Mi Bici ML
 
 ## Setup
@@ -549,6 +566,25 @@ Cada run registra:
 La trazabilidad común está en `mi_bici/modeling/tracking.py`: `configure_mlflow()` activa
 el experimento y `log_traceability(question)` registra las etiquetas y la versión de los
 datos.
+
+## Buenas prácticas
+
+- **Experimento único y runs con nombre descriptivo:** P1, P2 y P3 registran en
+  `mibici-equipo02`, y cada run indica qué se probó y su versión, por ejemplo
+  `baseline_semanal_v1`.
+- **Parámetros de reproducción:** cada run registra fechas de partición, versión de los datos
+  (`data_version`), semilla e hiperparámetros, para poder repetirlo.
+- **Métricas con el conjunto en el nombre:** `mae_val`, `mae_test`, `test_recall`, etc., para
+  no confundir validación con prueba.
+- **Sin credenciales ni datos personales:** las credenciales van en `.env`, que no se versiona.
+  La ingesta descarta `Usuario_Id`, `Genero` y `Año_de_nacimiento` de los CSV fuente, así que
+  ningún dato personal llega a los modelos, al repositorio ni a MLflow.
+- **Configuración en `config.py`:** rutas, fechas de corte y semillas se definen en
+  `mi_bici/config.py` y se importan desde ahí, en lugar de repetirse en cada script.
+- **Dependencias con versión fija:** `requirements.txt` fija la versión exacta de cada
+  paquete (`paquete==x.y.z`).
+- **`.gitignore`:** excluye datos (`data/`, `*.parquet`, CSV fuente), modelos serializados,
+  `mlflow.db`, `mlartifacts/` y archivos de credenciales.
 
 ## Project Organization
 
