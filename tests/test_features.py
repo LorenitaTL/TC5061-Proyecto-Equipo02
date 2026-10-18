@@ -3,90 +3,89 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from mi_bici.features import build_station_profiles, flow_balance, load_profile_trips
-
-MONDAY = "2025-01-06"
-SATURDAY = "2025-01-11"
-
-
-def make_trips(rows: list[tuple[str, str, str, bool]]) -> pd.DataFrame:
-    """Crea viajes de 10 minutos a partir de (inicio, origen, destino, duración cero)."""
-    started = pd.to_datetime([row[0] for row in rows])
-    return pd.DataFrame(
-        {
-            "started_at": started,
-            "ended_at": started + pd.Timedelta(minutes=10),
-            "origin_station_id": pd.array([row[1] for row in rows], dtype="string"),
-            "destination_station_id": pd.array([row[2] for row in rows], dtype="string"),
-            "zero_duration": [row[3] for row in rows],
-        }
-    )
+from mi_bici.features import (
+    add_calendar_features,
+    add_station_lags,
+    count_station_hourly,
+    load_trips,
+    month_range,
+    trip_files,
+)
 
 
-def commuting_trips() -> pd.DataFrame:
-    """Estación A residencial y B laboral: A -> B a las 7 h y B -> A a las 18 h."""
-    rows = (
-        [(f"{MONDAY} 07:00", "A", "B", False)] * 3
-        + [(f"{MONDAY} 18:00", "B", "A", False)] * 3
-        + [(f"{SATURDAY} 12:00", "A", "B", False)]
-        + [(f"{MONDAY} 07:30", "A", "B", True)] * 5
-    )
-    return make_trips(rows)
+def test_month_range_includes_both_ends():
+    """Enero a diciembre son 12 meses y el formato coincide con los archivos de viajes."""
+    months = month_range("2025-01", "2025-12")
+
+    assert len(months) == 12
+    assert months[0] == "2025_01"
+    assert months[-1] == "2025_12"
 
 
-def test_flow_balance_separates_origins_and_destinations():
-    """En la mañana A se vacía (balance -1) y B acumula bicis (balance +1)."""
-    trips = commuting_trips()
-    trips = trips.loc[~trips["zero_duration"]]
+def test_trip_files_fails_on_missing_month(tmp_path: Path):
+    """Falla si falta un mes, en lugar de usar un periodo incompleto."""
+    (tmp_path / "viajes_2025_01.parquet").touch()
 
-    balance = flow_balance(trips, range(6, 10))
-
-    assert balance["A"] == -1
-    assert balance["B"] == 1
+    with pytest.raises(FileNotFoundError, match="viajes_2025_02.parquet"):
+        trip_files("2025-01", "2025-02", processed_dir=tmp_path)
 
 
-def test_flow_balance_counts_stations_with_only_arrivals():
-    """Una estación sin salidas en la franja tiene balance +1, no se pierde."""
-    trips = make_trips([(f"{MONDAY} 07:00", "A", "B", False)])
-
-    balance = flow_balance(trips, range(6, 10))
-
-    assert balance.to_dict() == {"A": -1, "B": 1}
-
-
-def test_build_station_profiles_variables():
-    """Calcula balances entre semana, uso en fin de semana y volumen sin duraciones cero."""
-    profiles = build_station_profiles(commuting_trips(), min_departures=1)
-
-    assert profiles.loc["A", "balance_am"] == -1
-    assert profiles.loc["A", "balance_pm"] == 1
-    assert profiles.loc["A", "balance_dia"] == 0
-    # A: 4 salidas válidas (3 el lunes y 1 el sábado); las 5 de duración cero no cuentan.
-    assert profiles.loc["A", "share_fin_semana"] == pytest.approx(1 / 4)
-    assert profiles.loc["B", "share_fin_semana"] == 0
-
-
-def test_build_station_profiles_excludes_low_activity_stations():
-    """Las estaciones con pocas salidas no tienen un perfil completo y se excluyen."""
-    profiles = build_station_profiles(commuting_trips(), min_departures=4)
-
-    assert profiles.index.tolist() == ["A"]
-
-
-def test_load_profile_trips_reads_month_range(tmp_path: Path):
-    """Lee solo los meses del rango pedido."""
-    trips = commuting_trips()
+def test_load_trips_reads_only_requested_columns_and_months(tmp_path: Path):
+    """Lee solo las columnas y los meses pedidos."""
+    trips = pd.DataFrame({"trip_id": [1, 2], "origin_station_id": ["A", "B"]})
     trips.to_parquet(tmp_path / "viajes_2025_01.parquet")
     trips.to_parquet(tmp_path / "viajes_2025_02.parquet")
 
-    loaded = load_profile_trips("2025-01", "2025-01", processed_dir=tmp_path)
+    loaded = load_trips(["origin_station_id"], "2025-01", "2025-01", processed_dir=tmp_path)
 
-    assert len(loaded) == len(trips)
+    assert loaded.columns.tolist() == ["origin_station_id"]
+    assert len(loaded) == 2
 
 
-def test_load_profile_trips_fails_on_missing_month(tmp_path: Path):
-    """Falla si falta un mes, en lugar de construir perfiles incompletos."""
-    commuting_trips().to_parquet(tmp_path / "viajes_2025_01.parquet")
+def test_count_station_hourly_uses_the_hour_of_each_timestamp():
+    """Cuenta los viajes de cada estación en la hora en que ocurrieron."""
+    trips = pd.DataFrame(
+        {
+            "origin_station_id": ["A", "A", "B"],
+            "started_at": pd.to_datetime(
+                ["2025-01-06 07:05", "2025-01-06 07:55", "2025-01-06 08:10"]
+            ),
+        }
+    )
 
-    with pytest.raises(FileNotFoundError, match="viajes_2025_02.parquet"):
-        load_profile_trips("2025-01", "2025-02", processed_dir=tmp_path)
+    counts = count_station_hourly(trips, "origin_station_id", "started_at", "departures")
+
+    assert counts.columns.tolist() == ["station_id", "hour", "departures"]
+    assert counts["departures"].tolist() == [2, 1]
+    assert counts["hour"].dt.hour.tolist() == [7, 8]
+
+
+def test_add_calendar_features():
+    """El viernes es laboral y el sábado es fin de semana."""
+    df = pd.DataFrame({"hour": pd.to_datetime(["2026-06-05 08:00", "2026-06-06 14:00"])})
+
+    result = add_calendar_features(df)
+
+    assert result["hour_of_day"].tolist() == [8, 14]
+    assert result["day_of_week"].tolist() == [4, 5]
+    assert result["is_weekend"].tolist() == [0, 1]
+
+
+def test_add_station_lags_sorts_before_shifting():
+    """Los rezagos siguen el tiempo de cada estación aunque las filas lleguen desordenadas."""
+    hours = pd.date_range("2026-06-01", periods=3, freq="h")
+    df = pd.DataFrame(
+        {
+            "station_id": ["B", "A", "B", "A", "B", "A"],
+            "hour": [hours[2], hours[1], hours[0], hours[0], hours[1], hours[2]],
+            "departures": [12, 2, 10, 1, 11, 3],
+        }
+    )
+
+    result = add_station_lags(df, "departures", [1], prefix="departures_")
+
+    a = result.loc[result["station_id"] == "A"]
+    b = result.loc[result["station_id"] == "B"]
+    assert a["departures_lag_1h"].tolist()[1:] == [1, 2]
+    assert b["departures_lag_1h"].tolist()[1:] == [10, 11]
+    assert result["departures_lag_1h"].isna().sum() == 2

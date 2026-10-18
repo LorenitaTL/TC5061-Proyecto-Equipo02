@@ -370,7 +370,7 @@ Los identificadores de los runs dependen de cada ejecución local, por lo que pu
 El entrenamiento puede reproducirse desde la raíz del repositorio mediante:
 
 ```bash
-python -m mi_bici.modeling.train
+python -m mi_bici.modeling.train_p2
 ```
 
 Los artefactos generados localmente incluyen:
@@ -400,7 +400,7 @@ Aunque la eliminación del desbalance actual produce un incremento marginal en R
 Para reproducir el entrenamiento de P2 desde la raíz del repositorio:
 
 ```bash
-python -m mi_bici.modeling.train
+python -m mi_bici.modeling.train_p2
 ```
 
 El script realiza la carga de las características procesadas, genera la partición temporal, calcula el umbral P80 a partir del conjunto de entrenamiento, entrena el pipeline de clasificación, evalúa el modelo en train, validation y test, y registra el experimento y sus artefactos en MLflow.
@@ -433,7 +433,7 @@ La exploración y la selección del modelo están en
 
 ### Variables
 
-Las funciones están en `mi_bici/features.py` (`load_profile_trips`, `flow_balance`,
+Las funciones están en `mi_bici/features_p3.py` (`load_profile_trips`, `flow_balance`,
 `build_station_profiles`):
 
 | Variable | Descripción | Uso |
@@ -518,8 +518,8 @@ python -m mi_bici.modeling.train_p1
 python -m mi_bici.modeling.evaluate_p1 --model-uri models:/<ID_DEL_MODELO>
 
 # P2: features y modelo
-python -m mi_bici.features
-python -m mi_bici.modeling.train
+python -m mi_bici.features_p2
+python -m mi_bici.modeling.train_p2
 
 # P3: perfiles, baseline y modelo
 python -m mi_bici.modeling.train_p3
@@ -591,12 +591,12 @@ datos.
     │
     ├── dataset.py              <- Scripts to download or generate data
     │
-    ├── features.py             <- Code to create features for modeling
+    ├── features.py             <- Shared feature functions used by features_p1/p2/p3
     │
     ├── modeling
     │   ├── __init__.py
     │   ├── predict.py          <- Code to run model inference with trained models
-    │   └── train.py            <- Code to train models
+    │   └── train_p1.py, train_p2.py, train_p3.py <- Code to train models (one per question)
     │
     └── plots.py                <- Code to create visualizations
 ```

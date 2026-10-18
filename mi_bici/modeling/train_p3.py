@@ -13,8 +13,6 @@ comparables. Los meses posteriores se usan solo como prueba: se asignan con el m
 ajustado y se compara contra un reajuste para medir si los grupos se sostienen en el tiempo.
 """
 
-from pathlib import Path
-
 from loguru import logger
 from matplotlib.figure import Figure
 import mlflow
@@ -28,11 +26,17 @@ import typer
 from mi_bici.config import (
     DATA_END_MONTH,
     DATA_START_MONTH,
-    PROCESSED_DATA_DIR,
     RANDOM_STATE,
     TRAIN_END_MONTH,
 )
-from mi_bici.features import MIN_DEPARTURES, build_station_profiles, load_profile_trips
+from mi_bici.features import month_range
+from mi_bici.features_p3 import (
+    LOCATION_FEATURES,
+    MIN_DEPARTURES,
+    build_station_profiles,
+    load_profile_trips,
+    load_station_coordinates,
+)
 from mi_bici.modeling.tracking import configure_mlflow, log_traceability
 
 app = typer.Typer()
@@ -43,34 +47,11 @@ N_STABILITY_SEEDS = 5
 WEEKEND_CLIP_QUANTILE = 0.99
 
 USAGE_FEATURES = ["balance_am", "balance_pm", "share_fin_semana"]
-LOCATION_FEATURES = ["latitude", "longitude"]
 
 RUNS = {
     "p3-baseline-kmeans-ubicacion-k3": LOCATION_FEATURES,
     "p3-kmeans-perfil-uso-k3": USAGE_FEATURES,
 }
-
-
-def load_station_coordinates(processed_dir: Path = PROCESSED_DATA_DIR) -> pd.DataFrame:
-    """Lee latitud y longitud de cada estación con coordenadas válidas.
-
-    Las coordenadas sirven como variables del baseline y para ubicar los clusters en el mapa,
-    que es la segunda parte de la pregunta P3.
-    """
-    stations = pd.read_parquet(processed_dir / "estaciones.parquet")
-    valid = stations.loc[stations["coordinates_valid"].fillna(False)]
-
-    return (
-        valid.drop_duplicates("station_id")
-        .set_index("station_id")[LOCATION_FEATURES]
-        .astype(float)
-        .sort_index()
-    )
-
-
-def months_between(start_month: str, end_month: str) -> int:
-    """Cuenta los meses de un rango, incluyendo ambos extremos."""
-    return len(pd.period_range(start_month, end_month, freq="M"))
 
 
 def fit_kmeans(X: np.ndarray, seed: int = RANDOM_STATE) -> KMeans:
@@ -199,8 +180,8 @@ def train_and_log(
 def main() -> None:
     """Construye los perfiles de entrenamiento y prueba y registra los runs de P3."""
     test_start_month = str(pd.Period(TRAIN_END_MONTH, freq="M") + 1)
-    train_months = months_between(DATA_START_MONTH, TRAIN_END_MONTH)
-    test_months = months_between(test_start_month, DATA_END_MONTH)
+    train_months = len(month_range(DATA_START_MONTH, TRAIN_END_MONTH))
+    test_months = len(month_range(test_start_month, DATA_END_MONTH))
 
     # El mínimo de salidas se ajusta a la duración de cada periodo.
     test_min_departures = round(MIN_DEPARTURES * test_months / train_months)

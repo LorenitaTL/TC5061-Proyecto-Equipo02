@@ -22,7 +22,6 @@ exclusivamente utilizando el conjunto de entrenamiento para evitar
 fuga de información.
 """
 
-import hashlib
 from pathlib import Path
 
 import joblib
@@ -49,7 +48,6 @@ from mi_bici.config import (
     LOGISTIC_CLASS_WEIGHT,
     LOGISTIC_MAX_ITER,
     LOGISTIC_SOLVER,
-    PROCESSED_DATA_DIR,
     PROJ_ROOT,
     RANDOM_STATE,
     RISK_PERCENTILE,
@@ -57,6 +55,8 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
+from mi_bici.dataset import calculate_sha256
+from mi_bici.features_p2 import DATASET_PATH
 from mi_bici.modeling.tracking import configure_mlflow, log_traceability
 
 app = typer.Typer()
@@ -119,33 +119,6 @@ FEATURE_COLUMNS = [
     "net_flow_rolling_3h",
     "net_flow_rolling_24h",
 ]
-
-
-# ---------------------------------------------------------
-# Funciones auxiliares para reproducibilidad
-# ---------------------------------------------------------
-
-
-def calculate_file_hash(
-    path: Path,
-) -> str:
-    """
-    Calcula el hash SHA-256 de un archivo.
-
-    Se utiliza como identificador de la versión exacta del archivo
-    de datos utilizado para entrenar el modelo.
-    """
-
-    sha256 = hashlib.sha256()
-
-    with path.open("rb") as file:
-        for chunk in iter(
-            lambda: file.read(1024 * 1024),
-            b"",
-        ):
-            sha256.update(chunk)
-
-    return sha256.hexdigest()
 
 
 # ---------------------------------------------------------
@@ -376,7 +349,7 @@ def evaluate_model(
 
 @app.command()
 def main(
-    input_path: Path = (PROCESSED_DATA_DIR / "features_p2.parquet"),
+    input_path: Path = DATASET_PATH,
 ):
     """
     Entrena el modelo de clasificación de riesgo operacional P2.
@@ -403,7 +376,7 @@ def main(
 
     configure_mlflow()
 
-    features_data_version = calculate_file_hash(input_path)
+    features_data_version = calculate_sha256(input_path)
 
     with mlflow.start_run(run_name=("P2-logistic-regression-baseline")) as run:
         # -------------------------------------------------

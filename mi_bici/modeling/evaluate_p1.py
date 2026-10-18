@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from mi_bici.config import PROCESSED_DATA_DIR
+from mi_bici.features_p1 import DATASET_PATH, FEATURES
 from mi_bici.modeling.splits_p1 import temporal_masks
 from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p1 import log_p1_traceability
@@ -26,14 +26,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-FEATURES = [
-    "hour_of_day",
-    "day_of_week",
-    "is_weekend",
-    "lag_1h",
-    "lag_24h",
-    "lag_168h",
-]
+def predict_demand(model, df: pd.DataFrame) -> np.ndarray:
+    """Predice los viajes de cada estación-hora; la demanda no puede ser negativa."""
+    return np.clip(model.predict(df[FEATURES].astype("float32")), 0, None)
+
+
+def regression_metrics(y_true: pd.Series, y_pred: np.ndarray, split: str) -> dict[str, float]:
+    """Calcula MAE y RMSE con el conjunto en el nombre, por ejemplo ``mae_val``."""
+    return {
+        f"mae_{split}": float(mean_absolute_error(y_true, y_pred)),
+        f"rmse_{split}": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+    }
 
 
 def main() -> None:
@@ -44,25 +47,20 @@ def main() -> None:
     logger.info("Cargando modelo registrado...")
     model = mlflow.sklearn.load_model(args.model_uri)
 
-    dataset = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
-
     df = pd.read_parquet(
-        dataset,
+        DATASET_PATH,
         columns=["hour", "trip_count", *FEATURES],
     )
 
     masks = temporal_masks(df["hour"])
     test = df.loc[masks["test"]].copy()
 
-    X_test = test[FEATURES].astype("float32")
-    y_test = test["trip_count"]
+    if test.empty:
+        raise ValueError("La partición de prueba está vacía.")
 
     logger.info("Generando predicciones de prueba...")
-    predictions = np.clip(model.predict(X_test), 0, None)
-
     metrics = {
-        "mae_test": float(mean_absolute_error(y_test, predictions)),
-        "rmse_test": float(np.sqrt(mean_squared_error(y_test, predictions))),
+        **regression_metrics(test["trip_count"], predict_demand(model, test), "test"),
         "n_test": len(test),
     }
 

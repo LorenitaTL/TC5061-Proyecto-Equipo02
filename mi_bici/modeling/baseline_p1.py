@@ -4,22 +4,19 @@ import json
 
 from loguru import logger
 import mlflow
-import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-from mi_bici.config import PROCESSED_DATA_DIR
+from mi_bici.features_p1 import DATASET_PATH
+from mi_bici.modeling.evaluate_p1 import regression_metrics
 from mi_bici.modeling.splits_p1 import temporal_masks
 from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p1 import log_p1_traceability
-
-DATASET = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
 
 
 def main() -> None:
     """Evalúa y registra un baseline estacional reproducible."""
     df = pd.read_parquet(
-        DATASET,
+        DATASET_PATH,
         columns=[
             "hour",
             "trip_count",
@@ -41,8 +38,7 @@ def main() -> None:
     )
 
     metrics = {
-        "mae_val": float(mean_absolute_error(y_true, y_pred)),
-        "rmse_val": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        **regression_metrics(y_true, y_pred, "val"),
         "n_validation": len(validation),
         "zero_predictions_pct": float(100 * (y_pred == 0).mean()),
     }
@@ -69,7 +65,7 @@ def main() -> None:
                     "utiliza lag de 24 horas, luego de 1 hora "
                     "y finalmente cero."
                 ),
-                "dataset": DATASET.name,
+                "dataset": DATASET_PATH.name,
                 "unit_of_analysis": "estacion-hora",
                 "limitations": [
                     "Los viajes registrados representan demanda observada.",

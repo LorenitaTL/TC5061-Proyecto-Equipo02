@@ -59,7 +59,7 @@ El procesamiento por lotes mensuales reduce el consumo de memoria y permite repr
 
 ## 3. Feature Engineering
 
-Las variables se construyen mediante funciones reutilizables en `mi_bici/features.py`.
+Las variables se construyen mediante funciones reutilizables: las comunes a las tres preguntas están en `mi_bici/features.py` y las propias de cada pregunta en `features_p1.py`, `features_p2.py` y `features_p3.py`.
 
 La granularidad depende de la pregunta:
 
@@ -226,7 +226,7 @@ La solución se ejecuta desde el repositorio mediante módulos Python y configur
 Para P2, el entrenamiento puede reproducirse mediante:
 
 ```powershell
-python -m mi_bici.modeling.train
+python -m mi_bici.modeling.train_p2
 ```
 
 El experimento genera métricas y artefactos que son registrados en MLflow.
