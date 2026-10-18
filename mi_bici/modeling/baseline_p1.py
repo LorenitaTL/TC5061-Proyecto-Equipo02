@@ -13,6 +13,11 @@ from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p1 import log_p1_traceability
 
 
+def seasonal_prediction(df: pd.DataFrame) -> pd.Series:
+    """Usa lag_168h; si falta, lag_24h, luego lag_1h y finalmente cero."""
+    return df["lag_168h"].fillna(df["lag_24h"]).fillna(df["lag_1h"]).fillna(0)
+
+
 def main() -> None:
     """Evalúa y registra un baseline estacional reproducible."""
     df = pd.read_parquet(
@@ -28,19 +33,23 @@ def main() -> None:
 
     masks = temporal_masks(df["hour"])
     validation = df.loc[masks["validation"]].copy()
+    test = df.loc[masks["test"]].copy()
 
     if validation.empty:
         raise ValueError("La partición de validación está vacía.")
+    if test.empty:
+        raise ValueError("La partición de prueba está vacía.")
 
-    y_true = validation["trip_count"]
-    y_pred = (
-        validation["lag_168h"].fillna(validation["lag_24h"]).fillna(validation["lag_1h"]).fillna(0)
-    )
+    y_pred_val = seasonal_prediction(validation)
+    y_pred_test = seasonal_prediction(test)
 
     metrics = {
-        **regression_metrics(y_true, y_pred, "val"),
+        **regression_metrics(validation["trip_count"], y_pred_val, "val"),
+        **regression_metrics(test["trip_count"], y_pred_test, "test"),
         "n_validation": len(validation),
-        "zero_predictions_pct_val": float(100 * (y_pred == 0).mean()),
+        "n_test": len(test),
+        "zero_predictions_pct_val": float(100 * (y_pred_val == 0).mean()),
+        "zero_predictions_pct_test": float(100 * (y_pred_test == 0).mean()),
     }
 
     experiment_name = configure_mlflow()
@@ -79,6 +88,8 @@ def main() -> None:
         logger.success(f"Run ID: {run.info.run_id}")
         logger.success(f"MAE validación: {metrics['mae_val']:.4f}")
         logger.success(f"RMSE validación: {metrics['rmse_val']:.4f}")
+        logger.success(f"MAE prueba: {metrics['mae_test']:.4f}")
+        logger.success(f"RMSE prueba: {metrics['rmse_test']:.4f}")
         logger.success(f"Experimento: {experiment_name}")
 
     print("\nMétricas registradas:")
