@@ -60,6 +60,10 @@ REFERENCES_DIR = PROJ_ROOT / "references"
 P1_TRAIN_END = "2026-04-01"
 P1_VALIDATION_END = "2026-06-01"
 
+# Randomización y muestreo. CSRA
+P1_RANDOM_STATE = 42
+P1_SAMPLE_SIZE = 1_000_000
+
 # ---------------------------------------------------------
 # Configuración del modelo P2
 # ---------------------------------------------------------
