@@ -40,7 +40,7 @@ def main() -> None:
     metrics = {
         **regression_metrics(y_true, y_pred, "val"),
         "n_validation": len(validation),
-        "zero_predictions_pct": float(100 * (y_pred == 0).mean()),
+        "zero_predictions_pct_val": float(100 * (y_pred == 0).mean()),
     }
 
     experiment_name = configure_mlflow()

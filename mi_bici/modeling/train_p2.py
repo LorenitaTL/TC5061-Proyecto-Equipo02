@@ -482,7 +482,7 @@ def main(
                 "train_observations": float(len(train)),
                 "validation_observations": float(len(validation)),
                 "test_observations": float(len(test)),
-                "risk_threshold": float(risk_threshold),
+                "train_risk_threshold": float(risk_threshold),
                 "train_risk_rate": float(train["Risk"].mean()),
                 "validation_risk_rate": float(validation["Risk"].mean()),
                 "test_risk_rate": float(test["Risk"].mean()),

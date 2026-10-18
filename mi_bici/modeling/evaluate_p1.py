@@ -59,16 +59,37 @@ def main() -> None:
         raise ValueError("La partición de prueba está vacía.")
 
     logger.info("Generando predicciones de prueba...")
+    predictions = predict_demand(model, test)
     metrics = {
-        **regression_metrics(test["trip_count"], predict_demand(model, test), "test"),
+        **regression_metrics(test["trip_count"], predictions, "test"),
         "n_test": len(test),
     }
+
+    # Viajes reales y predichos por día en todo el sistema, para revisar el error en el tiempo.
+    daily = (
+        test.assign(predicted=predictions)
+        .groupby(test["hour"].dt.date)[["trip_count", "predicted"]]
+        .sum()
+        .rename_axis("date")
+        .rename(columns={"trip_count": "real"})
+        .round(1)
+    )
 
     with mlflow.start_run(run_name="evaluacion_final_p1_v2"):
         log_p1_traceability()
         mlflow.log_param("model_uri", args.model_uri)
         mlflow.log_param("test_period", "2026-06")
         mlflow.log_metrics(metrics)
+        mlflow.log_text(daily.to_csv(), "test_daily_trips.csv")
+        mlflow.log_dict(
+            {
+                "description": "Evaluación final del modelo registrado, sin reentrenarlo.",
+                "model_uri": args.model_uri,
+                "dataset": DATASET_PATH.name,
+                "unit_of_analysis": "estacion-hora",
+            },
+            "evaluation_metadata.json",
+        )
 
     logger.success(f"MAE prueba: {metrics['mae_test']:.4f}")
     logger.success(f"RMSE prueba: {metrics['rmse_test']:.4f}")
