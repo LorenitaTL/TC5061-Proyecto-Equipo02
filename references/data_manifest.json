@@ -3,7 +3,7 @@
   "source": "Portal de datos abiertos MiBici",
   "period_start": "2025-01",
   "period_end": "2026-06",
-  "generated_at_utc": "2026-10-15T04:26:45.858637+00:00",
+  "generated_at_utc": "2026-10-18T01:37:28.065975+00:00",
   "total_months": 18,
   "total_trips": 6622260,
   "monthly_files": [
@@ -17,7 +17,7 @@
       "raw_sha256": "90ee75701a69374926af0400d204f3280baed0e3c1a1f97d9e6c0b283757125a",
       "processed_file": "viajes_2025_01.parquet",
       "processed_bytes": 8230697,
-      "processed_sha256": "4bb28615aa466b4783ad4c4f442d00f65fe77c64ccfc5cec2c43fe92d475abf0"
+      "processed_sha256": "4c089e0dd49d595ffc07b69030cccaa7d239b64d4f8ebc726eef05cca53a3402"
     },
     {
       "period": "2025-02",
@@ -29,7 +29,7 @@
       "raw_sha256": "f52f13f59eb2f1517e05c72f0a3d3d70c5b0fa6b86626c7325e8ca3b15ff74f8",
       "processed_file": "viajes_2025_02.parquet",
       "processed_bytes": 8066743,
-      "processed_sha256": "9f4d119c486616fd58d4ede4622bafcc1192b9ffe488869384041194311e7ce3"
+      "processed_sha256": "48e3308f47b6e6367acb179474640ea23313aee2e559881a7d412c8c978a6a99"
     },
     {
       "period": "2025-03",
@@ -41,7 +41,7 @@
       "raw_sha256": "e5aa1b5d197f294022d3f0ff1b55bf553fcbdb697b50d43deaddf8dca36fed64",
       "processed_file": "viajes_2025_03.parquet",
       "processed_bytes": 8713824,
-      "processed_sha256": "ad53c9cfa11cc4d99d62a43eee6a3945ee682b7bb95385bb2ce93a62d8eea5f4"
+      "processed_sha256": "d8b8d7a15f90a2b6920da687350905bae6da66727a1e0ef236ca042ee03f5b1c"
     },
     {
       "period": "2025-04",
@@ -53,7 +53,7 @@
       "raw_sha256": "630e637d6611aadc67aad321edcd541361220473bddf8e34ecba46c0e29d7341",
       "processed_file": "viajes_2025_04.parquet",
       "processed_bytes": 7972992,
-      "processed_sha256": "05867d71cb682b39fd9f980dc2d761ee531420b3aa0ed568f8e317cca35f2e7f"
+      "processed_sha256": "f2449de3d7f81590ba2a790a0d094bb4d529ba5772829573847977485261c51d"
     },
     {
       "period": "2025-05",
@@ -65,7 +65,7 @@
       "raw_sha256": "e0a744412a1e840c1d24c24269565a123b35739c0bac494b9c0f53ba0a2c43c2",
       "processed_file": "viajes_2025_05.parquet",
       "processed_bytes": 8549048,
-      "processed_sha256": "d437d0c9615113eae1a0cf558454d2ecd64f776c8603dbacfdffa78f7fbd911c"
+      "processed_sha256": "d83df96a4a0c49e7fcefb9a56bf3694f99186b25accd716dd0ed59b2ca8324c5"
     },
     {
       "period": "2025-06",
@@ -77,7 +77,7 @@
       "raw_sha256": "063e3523db00c90899f08fb134c4c382667eb0e4d8b6358890d426409c6f4c9e",
       "processed_file": "viajes_2025_06.parquet",
       "processed_bytes": 7796436,
-      "processed_sha256": "80426f9e7ebe119e5d4945795fe99660fc2664b1a3c6e26157ae3086819ac229"
+      "processed_sha256": "82122f1f759c9ffb57cf09897f81d22e406a50d84cb0db5cc98e0b78241a865a"
     },
     {
       "period": "2025-07",
@@ -89,7 +89,7 @@
       "raw_sha256": "a71a9e2a629ff91b021f57e302958e64fa545678d6373aaf0fed62dfc7bebd29",
       "processed_file": "viajes_2025_07.parquet",
       "processed_bytes": 8017998,
-      "processed_sha256": "e1570dcb247744ff7fbc02477ac3002462b2877d4932a287468ce8866be5ba07"
+      "processed_sha256": "3846edbb83322f465732bad10e50fb62851ea5cdc11d24b52d46a67f20cd5fb6"
     },
     {
       "period": "2025-08",
@@ -101,7 +101,7 @@
       "raw_sha256": "382e62f3eb878e13faf4c93d031c8efcf765c392b3402d27b264613f9ff4a56d",
       "processed_file": "viajes_2025_08.parquet",
       "processed_bytes": 8140375,
-      "processed_sha256": "d8755a968034fb73d583d14edc9658ea4450e30127daedd08fed82295a984619"
+      "processed_sha256": "71f7fa1d5cc01da7c26c6fcc90924fec01e049d5d32cc95fdf61832806f94d88"
     },
     {
       "period": "2025-09",
@@ -113,7 +113,7 @@
       "raw_sha256": "218bed1587a70ec5fc5e8589a04783532301f19c55acd3633fa219c96860e720",
       "processed_file": "viajes_2025_09.parquet",
       "processed_bytes": 8174969,
-      "processed_sha256": "faf53ee945fb9a950c55853f59a43a2c0b85a41e0fc3a8e0683f1e63ebeb9e3c"
+      "processed_sha256": "5bf66a1f805323ae5ccced00f08d90f3043411bb3ca0e3b1e74b4b3e075874eb"
     },
     {
       "period": "2025-10",
@@ -125,7 +125,7 @@
       "raw_sha256": "505d9b8b59f65fa223f7889189b74b9fe167c9dda11c7e7053536a360c611370",
       "processed_file": "viajes_2025_10.parquet",
       "processed_bytes": 8997497,
-      "processed_sha256": "3c12995e47cdd482f29893d776f11d36609d08bcbb754dd28302a145914353a7"
+      "processed_sha256": "7af6b4b85d963b5061b9c67471a08164939421050517dfab4b143f898fdabb8b"
     },
     {
       "period": "2025-11",
@@ -137,7 +137,7 @@
       "raw_sha256": "f5c4f1b0c0842339dfdfaac756607314bdf5b64d17cde58d754f5a5a2e1a5fbe",
       "processed_file": "viajes_2025_11.parquet",
       "processed_bytes": 8246556,
-      "processed_sha256": "652559594b325b094eb08c7c5b03de7a6db9b16b9defd0da2e0eb4420d6aa42b"
+      "processed_sha256": "5a7644fbeaa22d14842ef8c46815620240dbb8b431be22b026351856f4ef2c02"
     },
     {
       "period": "2025-12",
@@ -149,7 +149,7 @@
       "raw_sha256": "b9fbb7386666ac3d452e3d3ef40ab443c39eef349cd9c97207230371e1d2d001",
       "processed_file": "viajes_2025_12.parquet",
       "processed_bytes": 7408395,
-      "processed_sha256": "58560c633c983a28232380373f647af9d35d39501d76bab76f5670e85e417939"
+      "processed_sha256": "967d574c8963c2d3e334792d43941ceea0bd3a938e4028b826953ec72c15abbd"
     },
     {
       "period": "2026-01",
@@ -161,7 +161,7 @@
       "raw_sha256": "c40d7a43eb1c0b1523d6267bcdfac1daad04179ef1f0a7cf93f09b2df82285c2",
       "processed_file": "viajes_2026_01.parquet",
       "processed_bytes": 7813500,
-      "processed_sha256": "c86ded6a774d75e6ea8ed59eeec3c7437bbb8bccff2609d954e5b12b0dd6d93d"
+      "processed_sha256": "8cf67f6c5c24cc1ae1dd70e98a5b3623054db638920290bffa3a5fcac9f27d68"
     },
     {
       "period": "2026-02",
@@ -173,7 +173,7 @@
       "raw_sha256": "2d78fa9686477bdedbf333423e6aadc63b265aaef038eb0b09701746a155ae1f",
       "processed_file": "viajes_2026_02.parquet",
       "processed_bytes": 7345008,
-      "processed_sha256": "3101100d1a206b5b56e196918da0e608f29cff8ada888ca7374bd5fa1dff2fda"
+      "processed_sha256": "e34cb0defd151f48c4364d56a5c3d243055af4e5dfb80801830f7d5bbeb8cefe"
     },
     {
       "period": "2026-03",
@@ -185,7 +185,7 @@
       "raw_sha256": "97c273aa7465c99d509dfc58436122a979ad51af00bd527cef6144210375d16e",
       "processed_file": "viajes_2026_03.parquet",
       "processed_bytes": 8181375,
-      "processed_sha256": "d378c211e760ca291be7de6ee55a02deb65f2b0de8dea682b11e271f1c25ba77"
+      "processed_sha256": "9209b87c7ca125aa16ceb2658210882b0485b37c7b5933ef567b0437d26de826"
     },
     {
       "period": "2026-04",
@@ -197,7 +197,7 @@
       "raw_sha256": "9165342d0169f2c0ba4fb2c944003147c8a95d77f9058361b451cadf141b2483",
       "processed_file": "viajes_2026_04.parquet",
       "processed_bytes": 7723150,
-      "processed_sha256": "b8fc2f72720be12eeec002a9fbc8794ac7c78791fd2ca3f065fc0eb6b6a52fad"
+      "processed_sha256": "2e9cecc0cd998881ef0da239a5d0d81b56bf277af8ca581ce9682a47108e8dc4"
     },
     {
       "period": "2026-05",
@@ -209,7 +209,7 @@
       "raw_sha256": "d0ac16ae3a75b8ac40565176e2e607c99c756a385860caa7e2ffb351082c9d45",
       "processed_file": "viajes_2026_05.parquet",
       "processed_bytes": 7056446,
-      "processed_sha256": "95ff5349f2a061d570df81160ad0380c8eeb3acc87bd0de66d7f3f4824a46dda"
+      "processed_sha256": "7829c612dedde01e282772ab94a01d44dc1896eac82f79a55e7369acdd0fd420"
     },
     {
       "period": "2026-06",
@@ -221,14 +221,14 @@
       "raw_sha256": "a4d195786a3599b155829288a0432cd9e76c6780dc693c0e9579d11e11c49a27",
       "processed_file": "viajes_2026_06.parquet",
       "processed_bytes": 7798552,
-      "processed_sha256": "a2aa2a21ab4c2516629eff6098d645f32e4b609a82790ee8a959b7675c6e172d"
+      "processed_sha256": "119fdaed0bf6ce615abb45c86b62bf7be450a28414d47915622cea99b012d9ec"
     }
   ],
   "stations": {
     "source_file": "nomenclatura_2026_09.csv",
     "source_sha256": "206e45fe633922b634d858142fa21e6fd9f4c421b6435c02980ef290cc2df90d",
     "processed_file": "estaciones.parquet",
-    "processed_sha256": "ffad03658d9de79b1527342be6200bb48882a0180fa1c0b69e9db203b890a5ca",
+    "processed_sha256": "753944094404d781a8a8a8a3fff2743b2a4a7e1810a6dfc030655cce2b265b95",
     "catalog_period": "2026-09",
     "limitation": "La capacidad registrada en el catálogo no necesariamente representa la capacidad histórica durante 2025-01 a 2026-06."
   }

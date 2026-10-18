@@ -4,19 +4,34 @@ from loguru import logger
 import pandas as pd
 
 from mi_bici.config import PROCESSED_DATA_DIR
+from mi_bici.features import (
+    add_calendar_features,
+    add_station_lags,
+    count_station_hourly,
+    trip_files,
+)
+
+DATASET_PATH = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
+
+# Variables predictoras del modelo de P1, en el orden en que las recibe.
+FEATURES = [
+    "hour_of_day",
+    "day_of_week",
+    "is_weekend",
+    "lag_1h",
+    "lag_24h",
+    "lag_168h",
+]
 
 
 def aggregate_hourly_trips() -> pd.DataFrame:
-    """Agrega los viajes iniciados por estación y hora."""
+    """Agrega los viajes iniciados por estación y hora.
 
-    files = sorted(PROCESSED_DATA_DIR.glob("viajes_????_??.parquet"))
-
-    if not files:
-        raise FileNotFoundError("No se encontraron archivos de viajes procesados.")
-
+    Procesa un mes a la vez para limitar la memoria y suma los conteos al final.
+    """
     monthly = []
 
-    for path in files:
+    for path in trip_files():
         df = pd.read_parquet(
             path,
             columns=[
@@ -30,16 +45,9 @@ def aggregate_hourly_trips() -> pd.DataFrame:
             df["started_at"].notna() & df["origin_station_id"].notna() & ~df["invalid_start"]
         ].copy()
 
-        valid["hour"] = valid["started_at"].dt.floor("h")
-
-        summary = (
-            valid.groupby(["origin_station_id", "hour"])
-            .size()
-            .reset_index(name="trip_count")
-            .rename(columns={"origin_station_id": "station_id"})
+        monthly.append(
+            count_station_hourly(valid, "origin_station_id", "started_at", "trip_count")
         )
-
-        monthly.append(summary)
         logger.info(f"Procesado: {path.name}")
 
     hourly = (
@@ -90,20 +98,11 @@ def build_hourly_grid(hourly: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Incorpora variables calendario y rezagos históricos."""
+    """Incorpora variables calendario y rezagos de 1 hora, 1 día y 1 semana de ``trip_count``."""
 
-    result = df.copy()
+    result = add_calendar_features(df.copy())
 
-    result["hour_of_day"] = result["hour"].dt.hour
-    result["day_of_week"] = result["hour"].dt.dayofweek
-    result["is_weekend"] = (result["day_of_week"] >= 5).astype("int8")
-
-    grouped = result.groupby("station_id")["trip_count"]
-
-    for lag in [1, 24, 168]:
-        result[f"lag_{lag}h"] = grouped.shift(lag)
-
-    return result
+    return add_station_lags(result, "trip_count", [1, 24, 168])
 
 
 def main() -> None:
@@ -116,17 +115,15 @@ def main() -> None:
     grid = build_hourly_grid(hourly)
     features = add_features(grid)
 
-    output = PROCESSED_DATA_DIR / "p1_demanda_horaria.parquet"
-
     features.to_parquet(
-        output,
+        DATASET_PATH,
         index=False,
         engine="pyarrow",
         compression="snappy",
     )
 
     logger.success(f"Dataset P1 generado: {len(features):,} filas")
-    logger.success(f"Archivo: {output}")
+    logger.success(f"Archivo: {DATASET_PATH}")
 
 
 if __name__ == "__main__":

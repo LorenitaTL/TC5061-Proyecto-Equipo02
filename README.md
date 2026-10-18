@@ -363,14 +363,14 @@ Resultados obtenidos sobre los tres conjuntos:
 | Validation | 0.7391 | 0.5597 | 0.6370 | 0.8410 |
 | Test | 0.7283 | 0.5524 | 0.6283 | 0.8364 |
 
-El experimento se registra en MLflow bajo `mibici-equipo02-P2`, en la misma base local que P1 (`sqlite:///mlflow.db`). El run se identifica con las etiquetas `team=Equipo02`, `question=P2` y `git_commit`.
+El run se registra en el experimento `mibici-equipo02`, compartido por P1, P2 y P3. Se identifica con las etiquetas `team=equipo02`, `question=P2` y `git_commit`.
 
 Los identificadores de los runs dependen de cada ejecución local, por lo que pueden variar entre integrantes.
 
 El entrenamiento puede reproducirse desde la raíz del repositorio mediante:
 
 ```bash
-python -m mi_bici.modeling.train
+python -m mi_bici.modeling.train_p2
 ```
 
 Los artefactos generados localmente incluyen:
@@ -400,10 +400,155 @@ Aunque la eliminación del desbalance actual produce un incremento marginal en R
 Para reproducir el entrenamiento de P2 desde la raíz del repositorio:
 
 ```bash
-python -m mi_bici.modeling.train
+python -m mi_bici.modeling.train_p2
 ```
 
 El script realiza la carga de las características procesadas, genera la partición temporal, calcula el umbral P80 a partir del conjunto de entrenamiento, entrena el pipeline de clasificación, evalúa el modelo en train, validation y test, y registra el experimento y sus artefactos en MLflow.
+
+## P3 — Grupos de estaciones por perfil de uso
+
+### Formulación
+
+Se agrupan las estaciones según cómo se usan a lo largo del día y de la semana, y se ubican
+los grupos en el mapa. La unidad de análisis es la estación. No hay horizonte de
+predicción: los grupos describen el periodo de entrenamiento y se valida que se mantengan en
+los meses posteriores. Planeación urbana puede usarlos para decidir dónde reforzar la
+redistribución y dónde conviene expandir el sistema.
+
+La exploración y la selección del modelo están en
+[`notebooks/1.0-lt-perfiles-estaciones.ipynb`](notebooks/1.0-lt-perfiles-estaciones.ipynb).
+
+### Datos y partición
+
+| Conjunto | Periodo | Estaciones |
+| --- | --- | ---: |
+| Entrenamiento | 2025-01 a 2025-12 | 368 |
+| Prueba | 2026-01 a 2026-06 | 374 |
+
+- Los perfiles y el recorte de `share_fin_semana` en su percentil 99 se calculan solo con
+  entrenamiento. Los meses de prueba no participan en el ajuste.
+- Se descartan los viajes de duración cero (0.06 %), que no representan uso real.
+- Se excluyen las estaciones con menos de 1,000 salidas en entrenamiento (500 en los seis
+  meses de prueba), que operaron solo parte del periodo y no tienen un perfil completo.
+
+### Variables
+
+Las funciones están en `mi_bici/features_p3.py` (`load_profile_trips`, `flow_balance`,
+`build_station_profiles`):
+
+| Variable | Descripción | Uso |
+| --- | --- | --- |
+| `balance_am` | (llegadas − salidas) / total, de 6 a 9 h en días laborales | Agrupa |
+| `balance_pm` | Lo mismo, de 17 a 20 h | Agrupa |
+| `share_fin_semana` | Proporción de salidas en sábado o domingo | Agrupa |
+| `balance_dia` | Balance de todo el día laboral | Describe los grupos |
+| `log_viajes_dia` | log(1 + salidas por día) | Describe los grupos |
+
+Un balance positivo indica que la estación acumula bicicletas (destino) y uno negativo que
+se vacía (origen). El volumen no se usa para agrupar porque los grupos separarían estaciones
+muy usadas de poco usadas en lugar de perfiles de uso.
+
+### Modelos y métricas
+
+- **Baseline:** K-Means con k = 3 sobre latitud y longitud. Responde si basta la ubicación
+  para separar estaciones con usos distintos.
+- **Modelo candidato:** K-Means con k = 3 sobre `balance_am`, `balance_pm` y
+  `share_fin_semana`, estandarizadas.
+
+Los dos modelos se evalúan en el espacio de perfiles de uso, para que sus métricas sean
+comparables:
+
+- `train_silhouette` / `test_silhouette`: qué tan separados están los perfiles de uso.
+- `train_stability_ari`: si los grupos cambian con la semilla de K-Means.
+- `test_ari_vs_refit`: si los grupos se mantienen en 2026. Compara la asignación del modelo
+  de 2025 con un modelo reajustado con los datos de 2026.
+
+### Resultados
+
+| Modelo | `train_silhouette` | `test_silhouette` | `train_stability_ari` | `test_ari_vs_refit` |
+| --- | ---: | ---: | ---: | ---: |
+| Baseline (ubicación) | 0.108 | 0.097 | 1.000 | 1.000\* |
+| Perfil de uso | **0.357** | **0.314** | 1.000 | 0.945 |
+
+\* Es trivial: las coordenadas de las estaciones no cambian entre periodos.
+
+| Cluster | Estaciones | Perfil | Rasgos |
+| --- | ---: | --- | --- |
+| 0 | 178 | Residencial | Pierde bicicletas en la mañana y las recupera en la tarde. ~23 salidas/día. |
+| 1 | 137 | Destino laboral | Gana bicicletas en la mañana y las pierde en la tarde. ~31 salidas/día. |
+| 2 | 53 | Recreativo | Más uso en fin de semana (28 %) y pierde bicicletas en el día. ~15 salidas/día. |
+
+El cluster 2 es el único que pierde bicicletas de forma sistemática, por lo que necesita
+reabastecimiento aunque tenga menos volumen. Los clusters 0 y 1 se compensan a lo largo del
+día, de modo que la redistribución entre ellos se concentra en las horas pico.
+
+### Reproducibilidad de P3
+
+```bash
+python -m mi_bici.modeling.train_p3
+```
+
+Registra los runs `p3-baseline-kmeans-ubicacion-k3` y `p3-kmeans-perfil-uso-k3`. Cada uno
+guarda como artefactos el resumen por cluster (`cluster_summary.csv`), la asignación de cada
+estación (`station_clusters.csv`) y el mapa de los grupos junto con su perfil de uso
+(`clusters.png`).
+
+### Limitaciones de P3
+
+- Los perfiles forman un continuo, por lo que la silhouette es moderada (0.36). Los grupos son
+  una segmentación útil y estable, no grupos naturales bien separados.
+- Las estaciones abiertas después de 2025 (401, 402, 405 y 407) no tienen perfil de
+  entrenamiento.
+- El número de cada cluster depende de la semilla. Para comparar runs se deben usar los
+  perfiles, no el número.
+
+## Experimento base en MLflow
+
+Las tres preguntas registran sus runs en un solo experimento, `mibici-equipo02`, en la base
+local `mlflow.db`, que se puede cambiar con la variable de entorno `MLFLOW_TRACKING_URI`. Los
+artefactos se guardan en `mlartifacts/`. Ambos están excluidos de Git.
+
+Requiere haber ejecutado antes la [ingesta](#ejecución). Desde la raíz del repositorio:
+
+```bash
+# P1: dataset, baseline, modelo y evaluación final
+python -m mi_bici.features_p1
+python -m mi_bici.modeling.baseline_p1
+python -m mi_bici.modeling.train_p1
+python -m mi_bici.modeling.evaluate_p1 --model-uri models:/<ID_DEL_MODELO>
+
+# P2: features y modelo
+python -m mi_bici.features_p2
+python -m mi_bici.modeling.train_p2
+
+# P3: perfiles, baseline y modelo
+python -m mi_bici.modeling.train_p3
+```
+
+El `<ID_DEL_MODELO>` de P1 aparece en la interfaz de MLflow, en la sección de modelos del run
+`hist_gradient_boosting_v2`.
+
+Para abrir la interfaz:
+
+```bash
+python -m mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5001
+```
+
+En macOS, el puerto 5000 suele estar ocupado por AirPlay.
+
+Cada run registra:
+
+| Elemento | Contenido |
+| --- | --- |
+| Nombre | Descriptivo, por ejemplo `baseline_semanal_v1` o `p3-kmeans-perfil-uso-k3` |
+| Etiquetas | `team`, `question` (`P1`, `P2` o `P3`) y `git_commit` |
+| Parámetros | `data_version` (huella de `references/data_manifest.json`), rango de fechas, semilla, modelo e hiperparámetros |
+| Métricas | Con el conjunto en el nombre: `mae_val`, `mae_test`, `test_recall`, `train_silhouette`, etc. |
+| Artefactos | Metadatos y modelo (P1), métricas, umbral y modelo (P2), resumen, asignaciones y mapa de clusters (P3) |
+
+La trazabilidad común está en `mi_bici/modeling/tracking.py`: `configure_mlflow()` activa
+el experimento y `log_traceability(question)` registra las etiquetas y la versión de los
+datos.
 
 ## Project Organization
 
@@ -446,12 +591,12 @@ El script realiza la carga de las características procesadas, genera la partici
     │
     ├── dataset.py              <- Scripts to download or generate data
     │
-    ├── features.py             <- Code to create features for modeling
+    ├── features.py             <- Shared feature functions used by features_p1/p2/p3
     │
     ├── modeling
     │   ├── __init__.py
     │   ├── predict.py          <- Code to run model inference with trained models
-    │   └── train.py            <- Code to train models
+    │   └── train_p1.py, train_p2.py, train_p3.py <- Code to train models (one per question)
     │
     └── plots.py                <- Code to create visualizations
 ```

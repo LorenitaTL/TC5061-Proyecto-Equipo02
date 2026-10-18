@@ -85,7 +85,7 @@ Los resultados respaldan una mejora predictiva sobre el conjunto analítico cons
 
 Se utilizó MLflow Tracking con SQLite como backend local.
 
-Experimento: `MiBici_P1_Demanda_Horaria`.
+Experimento: `mibici-equipo02`, compartido por P1, P2 y P3. Los runs de P1 se identifican con la etiqueta `question=P1`.
 
 Se registraron parámetros, métricas, metadatos y el modelo entrenado. La evaluación final recuperó el modelo desde MLflow sin reentrenarlo.
 
