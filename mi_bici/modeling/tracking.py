@@ -63,6 +63,10 @@ def configure_mlflow(experiment_name: str = MLFLOW_EXPERIMENT_NAME) -> str:
 
     mlflow.set_experiment(experiment_name)
 
+    # Sin esta etiqueta, la interfaz de MLflow 3 puede tratar el experimento como GenAI y
+    # ocultar la pestaña Runs.
+    mlflow.set_experiment_tag("mlflow.experimentKind", "custom_model_development")
+
     return experiment_name
 
 

@@ -122,6 +122,40 @@ FEATURE_COLUMNS = [
 
 
 # ---------------------------------------------------------
+# Ablaciones
+# ---------------------------------------------------------
+
+# Variables que se quitan en cada versión del modelo. "completo" es el modelo final.
+ABLATIONS = {
+    "completo": [],
+    "sin_desbalance_actual": [
+        "absolute_imbalance",
+        "imbalance_ratio",
+    ],
+    "sin_flujo_actual": [
+        "departures",
+        "arrivals",
+        "net_flow",
+        "absolute_imbalance",
+        "imbalance_ratio",
+    ],
+}
+
+
+def ablation_features(ablation: str) -> list[str]:
+    """Devuelve las variables de FEATURE_COLUMNS que conserva la ablación."""
+    removed = ABLATIONS[ablation]
+    return [column for column in FEATURE_COLUMNS if column not in removed]
+
+
+def ablation_run_name(ablation: str) -> str:
+    """Nombre del run en MLflow; el modelo completo conserva su nombre histórico."""
+    if ablation == "completo":
+        return "P2-logistic-regression-baseline"
+    return f"P2-logistic-regression-{ablation.replace('_', '-')}"
+
+
+# ---------------------------------------------------------
 # Carga de datos
 # ---------------------------------------------------------
 
@@ -350,9 +384,33 @@ def evaluate_model(
 @app.command()
 def main(
     input_path: Path = DATASET_PATH,
+    ablation: str = typer.Option(
+        "completo",
+        help=f"Versión a entrenar: {', '.join(ABLATIONS)} o todas",
+    ),
+):
+    """Entrena el modelo completo de P2 o sus ablaciones, un run de MLflow por versión."""
+    if ablation == "todas":
+        ablations = list(ABLATIONS)
+    elif ablation in ABLATIONS:
+        ablations = [ablation]
+    else:
+        raise typer.BadParameter(f"Ablación desconocida: {ablation}")
+
+    for name in ablations:
+        train_model(input_path, name)
+
+
+def train_model(
+    input_path: Path,
+    ablation: str,
 ):
     """
     Entrena el modelo de clasificación de riesgo operacional P2.
+
+    Con una ablación distinta de "completo" se entrena el mismo pipeline sin
+    las variables indicadas en ABLATIONS, y solo se registra en MLflow, sin
+    reemplazar los archivos del modelo final en models/.
 
     Además de generar los archivos locales del modelo, registra en MLflow:
 
@@ -368,7 +426,9 @@ def main(
     De esta forma el experimento puede ser reproducido y auditado.
     """
 
-    logger.info("Iniciando entrenamiento P2...")
+    logger.info(f"Iniciando entrenamiento P2 ({ablation})...")
+
+    features = ablation_features(ablation)
 
     # -----------------------------------------------------
     # 1. Configuración de MLflow
@@ -378,7 +438,7 @@ def main(
 
     features_data_version = calculate_sha256(input_path)
 
-    with mlflow.start_run(run_name=("P2-logistic-regression-baseline")) as run:
+    with mlflow.start_run(run_name=ablation_run_name(ablation)) as run:
         # -------------------------------------------------
         # Tags de trazabilidad
         # -------------------------------------------------
@@ -390,6 +450,7 @@ def main(
                 "business_question": BUSINESS_QUESTION,
                 "prediction_horizon": "1 hour",
                 "unit_of_analysis": "station-hour",
+                "ablation": ablation,
             }
         )
 
@@ -463,8 +524,10 @@ def main(
                 "validation_fraction": VALIDATION_FRACTION,
                 "test_fraction": TEST_FRACTION,
                 # Características
-                "n_features": len(FEATURE_COLUMNS),
-                "features": ",".join(FEATURE_COLUMNS),
+                "ablation": ablation,
+                "removed_features": ",".join(ABLATIONS[ablation]) or "ninguna",
+                "n_features": len(features),
+                "features": ",".join(features),
                 # Datos
                 "data_start": data_start,
                 "data_end": data_end,
@@ -493,15 +556,15 @@ def main(
         # 7. Preparar X / y
         # -------------------------------------------------
 
-        X_train = train[FEATURE_COLUMNS]
+        X_train = train[features]
 
         y_train = train["Risk"]
 
-        X_validation = validation[FEATURE_COLUMNS]
+        X_validation = validation[features]
 
         y_validation = validation["Risk"]
 
-        X_test = test[FEATURE_COLUMNS]
+        X_test = test[features]
 
         y_test = test["Risk"]
 
@@ -592,11 +655,6 @@ def main(
         # 11. Guardar archivos locales
         # -------------------------------------------------
 
-        MODEL_DIR.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
         metrics_df = pd.DataFrame(
             [
                 {
@@ -614,28 +672,35 @@ def main(
             ]
         )
 
-        metrics_df.to_csv(
-            METRICS_PATH,
-            index=False,
-        )
+        # Las ablaciones no reemplazan los archivos del modelo final.
+        if ablation == "completo":
+            MODEL_DIR.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
 
-        THRESHOLD_PATH.write_text(
-            str(risk_threshold),
-            encoding="utf-8",
-        )
+            metrics_df.to_csv(
+                METRICS_PATH,
+                index=False,
+            )
 
-        joblib.dump(
-            model,
-            MODEL_PATH,
-        )
+            THRESHOLD_PATH.write_text(
+                str(risk_threshold),
+                encoding="utf-8",
+            )
+
+            joblib.dump(
+                model,
+                MODEL_PATH,
+            )
 
         # -------------------------------------------------
         # 12. Registrar artifacts en MLflow
         # -------------------------------------------------
 
-        mlflow.log_artifact(str(METRICS_PATH))
+        mlflow.log_text(metrics_df.to_csv(index=False), METRICS_PATH.name)
 
-        mlflow.log_artifact(str(THRESHOLD_PATH))
+        mlflow.log_text(str(risk_threshold), THRESHOLD_PATH.name)
 
         # -------------------------------------------------
         # 13. Registrar modelo en MLflow
@@ -653,11 +718,12 @@ def main(
 
         logger.success(f"Versión del archivo de features: {features_data_version[:12]}...")
 
-        logger.success(f"Modelo local: {MODEL_PATH}")
+        if ablation == "completo":
+            logger.success(f"Modelo local: {MODEL_PATH}")
 
-        logger.success(f"Métricas: {METRICS_PATH}")
+            logger.success(f"Métricas: {METRICS_PATH}")
 
-        logger.success(f"Threshold: {THRESHOLD_PATH}")
+            logger.success(f"Threshold: {THRESHOLD_PATH}")
 
 
 if __name__ == "__main__":

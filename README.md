@@ -412,6 +412,19 @@ Se realizaron pruebas de eliminación de grupos de variables para evaluar la con
 
 Aunque la eliminación del desbalance actual produce un incremento marginal en Recall, el baseline presenta el mejor equilibrio general entre **Precision, F1 y ROC-AUC**. Por esta razón, se conserva el modelo con las 30 variables como modelo final de P2.
 
+Las variables que quita cada ablación están definidas en `ABLATIONS`, en `mi_bici/modeling/train_p2.py`:
+
+- **Sin desbalance actual:** `absolute_imbalance` e `imbalance_ratio`.
+- **Sin flujo actual:** además `departures`, `arrivals` y `net_flow`.
+
+Para reproducir la tabla, cada versión registra su propio run de MLflow (`P2-logistic-regression-baseline`, `P2-logistic-regression-sin-desbalance-actual` y `P2-logistic-regression-sin-flujo-actual`):
+
+```bash
+python -m mi_bici.modeling.train_p2 --ablation todas
+```
+
+Con `--ablation sin_desbalance_actual` o `--ablation sin_flujo_actual` se entrena solo una. Las ablaciones se registran únicamente en MLflow y no reemplazan los archivos del modelo final en `models/`.
+
 ### Reproducibilidad de P2
 
 Para reproducir el entrenamiento de P2 desde la raíz del repositorio:
