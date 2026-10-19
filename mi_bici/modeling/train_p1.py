@@ -6,14 +6,13 @@ import mlflow.sklearn
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 
-from mi_bici.config import P1_RANDOM_STATE, P1_SAMPLE_SIZE
+from mi_bici.config import P1_SAMPLE_SIZE, RANDOM_STATE
 from mi_bici.features_p1 import DATASET_PATH, FEATURES
 from mi_bici.modeling.evaluate_p1 import predict_demand, regression_metrics
 from mi_bici.modeling.splits_p1 import temporal_masks
 from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p1 import log_p1_traceability
 
-RANDOM_STATE = P1_RANDOM_STATE
 SAMPLE_SIZE = P1_SAMPLE_SIZE
 
 
