@@ -9,10 +9,13 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+from mi_bici.config import P1_VALIDATION_END
 from mi_bici.features_p1 import DATASET_PATH, FEATURES
 from mi_bici.modeling.splits_p1 import temporal_masks
 from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p1 import log_p1_traceability
+
+VALIDATION_END = pd.Timestamp(P1_VALIDATION_END)
 
 
 def parse_args() -> argparse.Namespace:
@@ -78,7 +81,7 @@ def main() -> None:
     with mlflow.start_run(run_name="evaluacion_final_p1_v2"):
         log_p1_traceability()
         mlflow.log_param("model_uri", args.model_uri)
-        mlflow.log_param("test_period", "2026-06")
+        mlflow.log_param("test_period", VALIDATION_END.strftime("%Y-%m"))
         mlflow.log_metrics(metrics)
         mlflow.log_text(daily.to_csv(), "test_daily_trips.csv")
         mlflow.log_dict(
