@@ -4,24 +4,29 @@
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
-  - **Propósito** El proyecto busca generar predictibilidad operativa en el futuro basado en tiempos, origen y destino
-  de los usuarios de MiBici así como obtener información respecto a riesgos opertivos como contar con anclajes
-  disponibles para las bicicletas o evitar quedarse sin bicicletas disponibles, así como identificar
-  los patrones de uso y similitud de los patrones uso en las diferentes estaciones.
+## Propósito
 
-  - **Preguntas del proyecto:**
+El proyecto busca anticipar la operación de MiBici, el sistema de bicicleta pública de
+Guadalajara, a partir de los tiempos, orígenes y destinos de sus viajes: predecir la demanda
+de cada estación, identificar riesgos operativos, como quedarse sin bicicletas o sin anclajes
+disponibles, y encontrar grupos de estaciones con patrones de uso similares.
+
+## Preguntas del proyecto
+
 | ID | Pregunta de negocio | Tipo de tarea | Quién la usaría |
 | :--- | :--- | :--- | :--- |
 | **P1** | ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro? | Regresión | Operador del sistema, para planear la flota. |
 | **P2** | ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes disponibles en un periodo futuro? | Clasificación | Equipo de rebalanceo de bicicletas. |
 | **P3** | ¿Qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad? | Clustering | Planeación urbana y expansión del sistema. |
-  - **Integrantes**
-Ariadna Meliza Martínez Anaya - A01797975@tec.mx
-Claudio Salvador Rivas Anguiano - A01840294@tec.mx
-Lorena Trujillo Landeros - A01797858@tec.mx
-Eduardo Valencia Guzmán - A01631738@tec.mx
 
-Mi Bici ML
+## Integrantes y roles
+
+| Integrante | Matrícula | GitHub | Rol |
+| :--- | :--- | :--- | :--- |
+| Ariadna Meliza Martínez Anaya | A01797975 | [@MelizaMartinez98](https://github.com/MelizaMartinez98) | Ingesta reproducible, calidad y versionado de datos; P1 (regresión) |
+| Claudio Salvador Rivas Anguiano | A01840294 | [@clsrivas](https://github.com/clsrivas) | Configuración centralizada y dependencias; baseline y ablaciones de P2; documentación |
+| Lorena Trujillo Landeros | A01797858 | [@LorenitaTL](https://github.com/LorenitaTL) | P3 (clustering); integración de MLflow; flujo de trabajo con Git, pre-commit y CI |
+| Eduardo Valencia Guzmán | A01631738 | [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96) | P2 (clasificación); ML Canvas y arquitectura |
 
 ## Setup
 
@@ -547,9 +552,11 @@ python -m mi_bici.modeling.baseline_p1
 python -m mi_bici.modeling.train_p1
 python -m mi_bici.modeling.evaluate_p1 --model-uri models:/<ID_DEL_MODELO>
 
-# P2: features y modelo
+# P2: features, baseline, modelo y ablaciones
 python -m mi_bici.features_p2
+python -m mi_bici.modeling.baseline_p2
 python -m mi_bici.modeling.train_p2
+python -m mi_bici.modeling.train_p2 --ablation todas
 
 # P3: perfiles, baseline y modelo
 python -m mi_bici.modeling.train_p3
@@ -598,56 +605,54 @@ datos.
   paquete (`paquete==x.y.z`).
 - **`.gitignore`:** excluye datos (`data/`, `*.parquet`, CSV fuente), modelos serializados,
   `mlflow.db`, `mlartifacts/` y archivos de credenciales.
+- **Etiquetas de trazabilidad:** cada run registra `team`, `question` (`P1`, `P2` o `P3`) y
+  `git_commit` mediante `log_traceability()` de `mi_bici/modeling/tracking.py`, para ligarlo con
+  la pregunta que atiende y el código que lo produjo.
+- **Notebooks solo para exploración:** los notebooks siguen la convención
+  `1.0-iniciales-descripcion.ipynb` (`1.0-evg-feature_engineering_p2`,
+  `1.0-lt-perfiles-estaciones`), y la lógica final vive en el módulo `mi_bici/`.
+- **Cambios por Pull Request revisado:** `main` está protegida; todo cambio entra por PR con al
+  menos una aprobación y conversaciones resueltas (ver [Git workflow](#git-workflow)).
 
 ## Project Organization
 
 ```
-├── LICENSE            <- Open-source license if one is chosen
-├── Makefile           <- Makefile with convenience commands like `make data` or `make train`
-├── README.md          <- The top-level README for developers using this project.
-├── data
-│   ├── external       <- Data from third party sources.
-│   ├── interim        <- Intermediate data that has been transformed.
-│   ├── processed      <- The final, canonical data sets for modeling.
-│   └── raw            <- The original, immutable data dump.
-│
-├── docs               <- A default mkdocs project; see www.mkdocs.org for details
-│
-├── models             <- Trained and serialized models, model predictions, or model summaries
-│
-├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-│                         the creator's initials, and a short `-` delimited description, e.g.
-│                         `1.0-jqp-initial-data-exploration`.
-│
-├── pyproject.toml     <- Project configuration file with package metadata for
-│                         mi_bici and configuration for tools like black
-│
-├── references         <- Data dictionaries, manuals, and all other explanatory materials.
-│
-├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-│   └── figures        <- Generated graphics and figures to be used in reporting
-│
-├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-│                         generated with `pip freeze > requirements.txt`
-│
-├── setup.cfg          <- Configuration file for flake8
-│
-└── mi_bici   <- Source code for use in this project.
-    │
-    ├── __init__.py             <- Makes mi_bici a Python module
-    │
-    ├── config.py               <- Store useful variables and configuration
-    │
-    ├── dataset.py              <- Scripts to download or generate data
-    │
-    ├── features.py             <- Shared feature functions used by features_p1/p2/p3
-    │
-    ├── modeling
-    │   ├── __init__.py
-    │   ├── predict.py          <- Code to run model inference with trained models
-    │   └── train_p1.py, train_p2.py, train_p3.py <- Code to train models (one per question)
-    │
-    └── plots.py                <- Code to create visualizations
+├── LICENSE
+├── Makefile           <- Comandos de entorno, lint, pruebas e ingesta
+├── README.md
+├── data               <- Excluida de Git
+│   ├── external       <- Catálogo original de estaciones
+│   ├── processed      <- Viajes normalizados (Parquet) y datasets de P1 y P2
+│   └── raw            <- CSV mensuales originales
+├── docs               <- Proyecto mkdocs y documentación de P1
+├── models             <- Modelos locales de P2 (excluidos de Git)
+├── notebooks          <- Exploración: 1.0-evg-feature_engineering_p2, 1.0-lt-perfiles-estaciones
+├── pyproject.toml     <- Metadatos del paquete y configuración de ruff
+├── references         <- ML Canvas, arquitectura, manifiesto de datos y reporte de calidad
+├── reports
+│   └── figures
+├── requirements.txt   <- Dependencias con versión fija
+├── tests              <- Pruebas de pytest
+└── mi_bici            <- Código del proyecto
+    ├── config.py          <- Rutas, fechas, semilla y configuración de MLflow
+    ├── dataset.py         <- Ingesta, manifiesto y verificación de datos
+    ├── data_quality.py    <- Reporte de calidad de datos
+    ├── features.py        <- Funciones de features comunes a P1, P2 y P3
+    ├── features_p1.py     <- Dataset estación-hora de P1
+    ├── features_p2.py     <- Dataset estación-hora de P2
+    ├── features_p3.py     <- Perfiles de uso por estación de P3
+    ├── plots.py
+    └── modeling
+        ├── tracking.py        <- Experimento y trazabilidad comunes de MLflow
+        ├── tracking_p1.py     <- Parámetros de partición de P1
+        ├── splits_p1.py       <- Particiones cronológicas de P1
+        ├── baseline_p1.py     <- Baseline estacional de P1
+        ├── train_p1.py        <- Modelo de P1
+        ├── evaluate_p1.py     <- Evaluación final de P1
+        ├── baseline_p2.py     <- Baseline de persistencia de P2
+        ├── train_p2.py        <- Modelo y ablaciones de P2
+        ├── train_p3.py        <- Baseline y modelo de P3
+        └── predict.py         <- Plantilla de inferencia
 ```
 
 --------
