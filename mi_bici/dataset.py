@@ -752,5 +752,16 @@ def verify_command():
     verify_manifest(manifest_path)
 
 
+@app.command("main")
+def main(
+    start_month: str = typer.Option(DATA_START_MONTH),
+    end_month: str = typer.Option(DATA_END_MONTH),
+):
+    """Ejecuta la ingesta, genera el manifiesto y verifica la integridad."""
+    ingest(start_month=start_month, end_month=end_month)
+    manifest_command(start_month=start_month, end_month=end_month)
+    verify_command()
+
+
 if __name__ == "__main__":
     app()
