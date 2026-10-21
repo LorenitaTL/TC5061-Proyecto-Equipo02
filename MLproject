@@ -1,0 +1,12 @@
+name: mibici-equipo02
+python_env: python_env.yaml
+
+entry_points:
+  ingest:
+    command: "python -m mi_bici.dataset main"
+
+  train:
+    parameters:
+      question: { type: string }
+      model: { type: string, default: "default" }
+    command: "python -m mi_bici.modeling.train --question {question} --model {model}"
