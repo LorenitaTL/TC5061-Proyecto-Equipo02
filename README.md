@@ -578,14 +578,114 @@ Cada run registra:
 | Elemento | Contenido |
 | --- | --- |
 | Nombre | Descriptivo, por ejemplo `baseline_semanal_v1` o `p3-kmeans-perfil-uso-k3` |
-| Etiquetas | `team`, `question` (`P1`, `P2` o `P3`) y `git_commit` |
+| Etiquetas | `team`, `question` (`P1`, `P2` o `P3`), `git_commit` y `data_version`; desde la Entrega 2, también `model_family` y `stage_of_work` (`baseline`, `search` o `candidate`) |
 | Parámetros | `data_version` (huella de `references/data_manifest.json`), rango de fechas, semilla, modelo e hiperparámetros |
 | Métricas | Con el conjunto en el nombre: `mae_val`, `mae_test`, `test_recall`, `train_silhouette`, etc. |
 | Artefactos | Metadatos y modelo (P1), métricas, umbral y modelo (P2), resumen, asignaciones y mapa de clusters (P3) |
 
-La trazabilidad común está en `mi_bici/modeling/tracking.py`: `configure_mlflow()` activa
-el experimento y `log_traceability(question)` registra las etiquetas y la versión de los
-datos.
+La trazabilidad común está en `mi_bici/modeling/tracking.py`:
+
+- `configure_mlflow()` activa el experimento.
+- `log_traceability(question, model_family, stage_of_work)` registra las etiquetas y la
+  versión de los datos.
+- `log_run_config(config)` guarda la configuración efectiva de la corrida en `config/`.
+- `nested_search(question, model_family)` organiza una búsqueda de hiperparámetros como una
+  corrida padre con una corrida hija por combinación (ver el ejemplo en su docstring).
+
+## Servidor de tracking y MLflow Project
+
+Desde la Entrega 2, las corridas se lanzan con `mlflow run` contra un servidor local de
+tracking. El Model Registry necesita un almacenamiento respaldado por base de datos, por eso
+el servidor usa el mismo `mlflow.db`, que conserva los runs de la Entrega 1.
+
+### 1. Levantar el servidor
+
+En una terminal, desde la raíz del repositorio, activa el entorno y levanta el servidor. El
+comando del servidor es el mismo en los dos sistemas:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+mlflow server --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5000
+```
+
+```powershell
+# Windows (PowerShell)
+.venv\Scripts\activate
+mlflow server --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5000
+```
+
+La interfaz queda en <http://127.0.0.1:5000>. En macOS, si el puerto 5000 está ocupado por
+AirPlay, usa otro (por ejemplo, `--port 5001`) y ajústalo también en el paso 2. Deja esta
+terminal abierta mientras trabajas.
+
+### 2. Apuntar al servidor
+
+En otra terminal, desde la raíz del repositorio:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+```
+
+```powershell
+# Windows (PowerShell)
+.venv\Scripts\activate
+$env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+```
+
+La variable solo dura mientras la terminal esté abierta; hay que definirla de nuevo en cada
+terminal nueva. Sin ella, el código escribe directamente en `mlflow.db`, sin pasar por el
+servidor.
+
+### 3. Ejecutar con `mlflow run`
+
+El archivo `MLproject` define dos puntos de entrada:
+
+| Punto de entrada | Qué ejecuta | Parámetros |
+| --- | --- | --- |
+| `ingest` | `python -m mi_bici.dataset main` | Ninguno; el periodo se toma de `mi_bici/config.py` |
+| `train` | `python -m mi_bici.modeling.train` | `question` (`p1`, `p2` o `p3`), `model` y los hiperparámetros del modelo |
+
+En la terminal del paso 2:
+
+```bash
+# macOS / Linux
+# Ingesta
+mlflow run . -e ingest --experiment-name mibici-equipo02 --env-manager local
+
+# Entrenamiento: un modelo por ejecución
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=4
+```
+
+```powershell
+# Windows (PowerShell)
+# Ingesta
+mlflow run . -e ingest --experiment-name mibici-equipo02 --env-manager local
+
+# Entrenamiento: un modelo por ejecución
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=4
+```
+
+En PowerShell, el salto de línea se marca con un acento grave (`` ` ``) en lugar de `\`;
+también puedes escribir el comando en una sola línea.
+
+- `--experiment-name mibici-equipo02` es obligatorio: si no coincide con el experimento que
+  activa el código, MLflow detiene la corrida.
+- Los parámetros que no están declarados en `MLproject` (como `n_clusters`) se pasan al
+  modelo de la pregunta. Los valores por defecto viven en `mi_bici/config.py`, no en
+  `MLproject`.
+- `--env-manager local` usa el entorno ya activado y sirve para desarrollar. Para reproducir
+  desde un clon limpio, usa `--env-manager uv`: MLflow crea un entorno nuevo a partir de
+  `python_env.yaml`, con las mismas versiones fijas de `requirements.txt`. En Windows, si
+  no tienes `uv`, instálalo con `python -m pip install uv`.
+
+Cada pregunta implementa en su `train_pX.py` una función `run(model, params)` que entrena un
+solo modelo y abre una sola corrida de MLflow. Los modelos disponibles de cada pregunta se
+documentan en su sección.
 
 ## Buenas prácticas
 
