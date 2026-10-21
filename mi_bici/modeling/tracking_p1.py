@@ -7,9 +7,16 @@ from mi_bici.modeling.splits_p1 import TRAIN_END, VALIDATION_END
 from mi_bici.modeling.tracking import log_traceability
 
 
-def log_p1_traceability() -> None:
-    """Registra la trazabilidad común con la pregunta P1 y las particiones temporales de P1."""
-    log_traceability("P1")
+def log_p1_traceability(
+    model_family: str | None = None,
+    stage_of_work: str | None = None,
+) -> None:
+    """Registra el contrato común y las particiones temporales de P1."""
+    log_traceability(
+        "P1",
+        model_family=model_family,
+        stage_of_work=stage_of_work,
+    )
 
     mlflow.log_params(
         {

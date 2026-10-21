@@ -18,7 +18,7 @@ def seasonal_prediction(df: pd.DataFrame) -> pd.Series:
     return df["lag_168h"].fillna(df["lag_24h"]).fillna(df["lag_1h"]).fillna(0)
 
 
-def main() -> None:
+def main() -> str:
     """Evalúa y registra un baseline estacional reproducible."""
     df = pd.read_parquet(
         DATASET_PATH,
@@ -55,7 +55,10 @@ def main() -> None:
     experiment_name = configure_mlflow()
 
     with mlflow.start_run(run_name="baseline_semanal_v1") as run:
-        log_p1_traceability()
+        log_p1_traceability(
+            model_family="seasonal",
+            stage_of_work="baseline",
+        )
         mlflow.log_params(
             {
                 "problem": "P1_regresion_demanda_horaria",
@@ -94,6 +97,10 @@ def main() -> None:
 
     print("\nMétricas registradas:")
     print(json.dumps(metrics, indent=2))
+
+    return run.info.run_id
+
+
 
 
 if __name__ == "__main__":
