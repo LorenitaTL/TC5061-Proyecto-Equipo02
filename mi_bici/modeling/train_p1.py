@@ -118,9 +118,7 @@ def run(model: str, params: dict[str, str]) -> str:
 
         logger.info("Calculando predicciones...")
         predictions = predict_demand(model, validation)
-        metrics = regression_metrics(
-            validation["trip_count"], predictions, "val"
-        )
+        metrics = regression_metrics(validation["trip_count"], predictions, "val")
         log_validation_plots(validation["trip_count"], predictions)
 
         mlflow.log_params(
@@ -179,9 +177,11 @@ def run(model: str, params: dict[str, str]) -> str:
 
     return run.info.run_id
 
+
 def main() -> None:
     """Conserva la ejecución directa del candidato con valores predeterminados."""
     run(model="histgb", params={})
+
 
 if __name__ == "__main__":
     main()
