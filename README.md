@@ -541,6 +541,16 @@ la configuración efectiva (`config/run_config.json`), el resumen por cluster
 junto con su perfil de uso (`plots/clusters.png` y `plots/clusters_test.png`). El conjunto de
 entrenamiento se registra con `mlflow.log_input`.
 
+El modelo seleccionado (`kmeans_perfil`, k = 3) se registra como `mibici-equipo02-p3-grupos`
+con su linaje y el alias `champion`:
+
+```bash
+python -m mi_bici.modeling.register_p3 --run-id <RUN_ID_DE_P3_KMEANS_PERFIL_K3>
+```
+
+La comparación de las corridas, la justificación de la selección y el registro se detallan en
+[Resultados de P3 en la Entrega 2](docs/p3_entrega2_resultados.md).
+
 ### Limitaciones de P3
 
 - Los perfiles forman un continuo, por lo que la silhouette es moderada (0.36). Los grupos son
@@ -764,7 +774,8 @@ documentan en su sección.
         ├── evaluate_p1.py     <- Evaluación final de P1
         ├── baseline_p2.py     <- Baseline de persistencia de P2
         ├── train_p2.py        <- Modelo y ablaciones de P2
-        ├── train_p3.py        <- Baseline y modelo de P3
+        ├── train_p3.py        <- Adaptador train, baseline y candidatos de P3
+        ├── register_p3.py     <- Registro del modelo de P3 con alias champion
         └── predict.py         <- Plantilla de inferencia
 ```
 
