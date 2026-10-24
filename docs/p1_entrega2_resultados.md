@@ -173,3 +173,18 @@ queda a cargo de Claudio. Los IDs y números de versión pueden cambiar.
   actualización de los rezagos.
 - Integrar la configuración centralizada que incorporará Claudio.
 - Completar revisión del PR y reproducción final desde un clon limpio.
+
+## Script de registro y verificación
+
+Para registrar el ganador, documentar su linaje y verificar `champion`:
+
+```powershell
+python -m mi_bici.modeling.register_p1 --run-id 6338e74554154891ae7b4a59ba479f57 --evaluation-run-id 3806d997bd124bfea4f03910cc03f487
+```
+
+El script reutiliza una versión existente del mismo entrenamiento si ya está
+registrada. En otro servidor, sustituir ambos Run ID por los de las nuevas
+ejecuciones.
+
+Se comprobó su ejecución sobre la versión 1, incluyendo igualdad de
+predicciones entre el modelo original, la versión registrada y el alias.
