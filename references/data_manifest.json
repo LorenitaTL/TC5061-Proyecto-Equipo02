@@ -3,7 +3,7 @@
   "source": "Portal de datos abiertos MiBici",
   "period_start": "2025-01",
   "period_end": "2026-06",
-  "generated_at_utc": "2026-10-18T01:37:28.065975+00:00",
+  "generated_at_utc": "2026-10-21T02:55:48.515471+00:00",
   "total_months": 18,
   "total_trips": 6622260,
   "monthly_files": [
@@ -228,7 +228,7 @@
     "source_file": "nomenclatura_2026_09.csv",
     "source_sha256": "206e45fe633922b634d858142fa21e6fd9f4c421b6435c02980ef290cc2df90d",
     "processed_file": "estaciones.parquet",
-    "processed_sha256": "753944094404d781a8a8a8a3fff2743b2a4a7e1810a6dfc030655cce2b265b95",
+    "processed_sha256": "69ccbf4a5de1a1ed0736a081abf053bd221042a378f3a3ff9468fb127c89f318",
     "catalog_period": "2026-09",
     "limitation": "La capacidad registrada en el catálogo no necesariamente representa la capacidad histórica durante 2025-01 a 2026-06."
   }
