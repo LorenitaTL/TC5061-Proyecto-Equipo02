@@ -188,3 +188,24 @@ ejecuciones.
 
 Se comprobó su ejecución sobre la versión 1, incluyendo igualdad de
 predicciones entre el modelo original, la versión registrada y el alias.
+
+## Evidencia reproducible de horas pico
+
+Se reprodujeron los resultados sobre 90,676 observaciones de validación.
+Las horas pico, definidas exclusivamente con entrenamiento, fueron
+08:00, 17:00, 18:00 y 19:00.
+
+```powershell
+python -m mi_bici.modeling.evaluate_peak_p1 --baseline-run-id 3f88171998734250935d7e5c8827dfbe --candidate-run-ids c2e1a7eb4e7a40a0b3aad28bf92d3152 6338e74554154891ae7b4a59ba479f57 7a4af041d67749b4bd54ee8b3c548f9d
+```
+
+El script recupera los modelos existentes sin reentrenarlos y añade métricas
+y artefactos a esas corridas, sin abrir corridas nuevas. Para reproducirlo
+en otro servidor, sustituir los Run ID.
+
+Evidencia guardada en las cuatro corridas:
+- Métricas: mae_peak, rmse_peak y n_validation_peak.
+- data/peak_evaluation/peak_comparison.csv.
+- data/peak_evaluation/training_hourly_profile.csv.
+- config/peak_evaluation/peak_evaluation.json.
+- Copia del script en config/peak_evaluation/.
