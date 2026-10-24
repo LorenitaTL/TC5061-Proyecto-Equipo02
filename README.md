@@ -519,14 +519,27 @@ día, de modo que la redistribución entre ellos se concentra en las horas pico.
 
 ### Reproducibilidad de P3
 
+Cada ejecución de `train` registra un run. El modelo `kmeans_ubicacion` es el baseline
+(`stage_of_work=baseline`) y `kmeans_perfil`, el valor por defecto, es el candidato. Se
+aceptan los hiperparámetros `n_clusters`, `n_init` y `features` (lista separada por comas).
+
 ```bash
-python -m mi_bici.modeling.train_p3
+# Baseline y corridas candidatas
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_ubicacion
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=3
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=4
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=5
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=4 -P features=balance_am,balance_pm,balance_dia,share_fin_semana
 ```
 
-Registra los runs `p3-baseline-kmeans-ubicacion-k3` y `p3-kmeans-perfil-uso-k3`. Cada uno
-guarda como artefactos el resumen por cluster (`cluster_summary.csv`), la asignación de cada
-estación (`station_clusters.csv`) y el mapa de los grupos junto con su perfil de uso
-(`clusters.png`).
+`python -m mi_bici.modeling.train_p3` registra el baseline y el candidato con los valores por
+defecto. Cada run guarda el pipeline (`StandardScaler` + `KMeans`) como `modelo_p3`, con
+firma e input example, y como artefactos el manifiesto de datos (`data/data_manifest.json`),
+la configuración efectiva (`config/run_config.json`), el resumen por cluster
+(`data/cluster_summary.csv`), la asignación de cada estación en entrenamiento y prueba
+(`data/station_clusters.csv` y `data/station_clusters_test.csv`) y el mapa de los grupos
+junto con su perfil de uso (`plots/clusters.png` y `plots/clusters_test.png`). El conjunto de
+entrenamiento se registra con `mlflow.log_input`.
 
 ### Limitaciones de P3
 
@@ -558,7 +571,7 @@ python -m mi_bici.modeling.baseline_p2
 python -m mi_bici.modeling.train_p2
 python -m mi_bici.modeling.train_p2 --ablation todas
 
-# P3: perfiles, baseline y modelo
+# P3: perfiles, baseline y modelo por defecto
 python -m mi_bici.modeling.train_p3
 ```
 
