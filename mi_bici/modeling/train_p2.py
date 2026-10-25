@@ -23,9 +23,12 @@ fuga de información.
 """
 
 from pathlib import Path
+
 import joblib
 from loguru import logger
+import matplotlib.pyplot as plt
 import mlflow
+from mlflow.models import infer_signature
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
@@ -35,23 +38,20 @@ from sklearn.metrics import (
     ConfusionMatrixDisplay,
     accuracy_score,
     f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
     roc_auc_score,
-    precision_recall_curve,
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import typer
-import matplotlib.pyplot as plt
-from mlflow import MlflowClient
-from mlflow.models import infer_signature
+
 from mi_bici.config import (
     IMPUTER_STRATEGY,
     LOGISTIC_CLASS_WEIGHT,
     LOGISTIC_MAX_ITER,
     LOGISTIC_SOLVER,
-    MLFLOW_EXPERIMENT_NAME,
     PROJ_ROOT,
     RANDOM_STATE,
     RISK_PERCENTILE,
@@ -59,12 +59,10 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
-
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
 from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p2 import log_p2_traceability
-from mlflow.models import infer_signature
 
 app = typer.Typer()
 
@@ -433,10 +431,7 @@ def run_hyperparameter_search(
         },
     ]
 
-    with mlflow.start_run(
-        run_name="P2-logistic-regression-search"
-    ) as parent_run:
-
+    with mlflow.start_run(run_name="P2-logistic-regression-search") as parent_run:
         mlflow.set_tags(
             {
                 "project": "MiBici",
@@ -472,20 +467,13 @@ def run_hyperparameter_search(
             }
         )
 
-        logger.info(
-            f"MLflow parent Run ID: {parent_run.info.run_id}"
-        )
+        logger.info(f"MLflow parent Run ID: {parent_run.info.run_id}")
 
         for candidate in search_space:
-
             C = candidate["C"]
             class_weight = candidate["class_weight"]
 
-            class_weight_name = (
-                "balanced"
-                if class_weight == "balanced"
-                else "none"
-            )
+            class_weight_name = "balanced" if class_weight == "balanced" else "none"
 
             ablation = candidate["ablation"]
             features = ablation_features(ablation)
@@ -497,17 +485,12 @@ def run_hyperparameter_search(
             X_validation = validation[features]
             y_validation = validation["Risk"]
 
-            child_name = (
-                f"P2-search-C-{C}"
-                f"-weight-{class_weight_name}"
-                f"-ablation-{ablation}"
-            )
+            child_name = f"P2-search-C-{C}-weight-{class_weight_name}-ablation-{ablation}"
 
             with mlflow.start_run(
                 run_name=child_name,
                 nested=True,
-            ) as child_run:
-
+            ):
                 mlflow.set_tags(
                     {
                         "project": "MiBici",
@@ -540,9 +523,7 @@ def run_hyperparameter_search(
                     steps=[
                         (
                             "imputer",
-                            SimpleImputer(
-                                strategy=IMPUTER_STRATEGY
-                            ),
+                            SimpleImputer(strategy=IMPUTER_STRATEGY),
                         ),
                         (
                             "scaler",
@@ -592,13 +573,9 @@ def run_hyperparameter_search(
                 # Validation plots
                 # ---------------------------------------------------------
 
-                y_validation_pred = model.predict(
-                    X_validation
-                )
+                y_validation_pred = model.predict(X_validation)
 
-                y_validation_proba = model.predict_proba(
-                    X_validation
-                )[:, 1]
+                y_validation_proba = model.predict_proba(X_validation)[:, 1]
 
                 # Confusion matrix
                 fig, ax = plt.subplots(figsize=(6, 5))
@@ -713,9 +690,7 @@ def run_hyperparameter_search(
                     f"{validation_metrics['recall']:.4f}"
                 )
 
-    logger.success(
-        "Búsqueda de hiperparámetros P2 terminada."
-    )
+    logger.success("Búsqueda de hiperparámetros P2 terminada.")
 
 
 # ---------------------------------------------------------
@@ -987,17 +962,14 @@ def train_model(
             values_format="d",
         )
 
-        confusion_matrix_display.ax_.set_title(
-            "P2 - Matriz de confusión en TEST"
-        )
+        confusion_matrix_display.ax_.set_title("P2 - Matriz de confusión en TEST")
 
         mlflow.log_figure(
             confusion_matrix_display.figure_,
             "plots/confusion_matrix_test.png",
         )
 
-        plt.close(confusion_matrix_display.figure_) 
-
+        plt.close(confusion_matrix_display.figure_)
 
         # -------------------------------------------------
         # 9.2 Curva Precision-Recall para P2
@@ -1113,9 +1085,7 @@ def train_model(
                 artifact_path="data",
             )
         else:
-            logger.warning(
-                f"No se encontró el manifiesto de datos: {data_manifest_path}"
-            )
+            logger.warning(f"No se encontró el manifiesto de datos: {data_manifest_path}")
 
         # -------------------------------------------------
         # 12.2 Registrar configuración
@@ -1129,20 +1099,18 @@ def train_model(
                 artifact_path="config",
             )
         else:
-            logger.warning(
-                f"No se encontró el archivo de configuración: {config_path}"
-            )
+            logger.warning(f"No se encontró el archivo de configuración: {config_path}")
 
         # -------------------------------------------------
         # 13. Registrar modelo en MLflow
         # -------------------------------------------------
 
-        signature= infer_signature(
+        signature = infer_signature(
             X_test,
             model.predict(X_test),
         )
 
-        model_info = mlflow.sklearn.log_model(
+        mlflow.sklearn.log_model(
             model,
             name="p2_risk_model",
             signature=signature,
@@ -1154,12 +1122,10 @@ def train_model(
         # 13.1 Registrar linaje del modelo
 
         logger.success("Modelo registrado en MLflow Model Registry.")
-        '''logger.success(
+        """logger.success(
             f"Modelo: mibici-equipo02-p2-riesgo "
             f"v{model_info.registered_model_version}"
-        )'''
-
-
+        )"""
 
         logger.success("Modelo registrado en MLflow.")
 
@@ -1173,7 +1139,6 @@ def train_model(
             logger.success(f"Métricas: {METRICS_PATH}")
 
             logger.success(f"Threshold: {THRESHOLD_PATH}")
-
 
 
 def run(model: str, params: dict):
@@ -1197,10 +1162,7 @@ def run(model: str, params: dict):
     elif ablation in ABLATIONS:
         ablations = [ablation]
     else:
-        raise ValueError(
-            f"Ablación desconocida: {ablation}. "
-            f"Opciones: {list(ABLATIONS)}"
-        )
+        raise ValueError(f"Ablación desconocida: {ablation}. Opciones: {list(ABLATIONS)}")
 
     run_ids = []
 
@@ -1213,4 +1175,3 @@ def run(model: str, params: dict):
 
 if __name__ == "__main__":
     app()
-

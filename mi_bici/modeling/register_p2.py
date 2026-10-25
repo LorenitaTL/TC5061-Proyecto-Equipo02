@@ -6,17 +6,17 @@ Uso::
 
 El run de origen debe ser una corrida candidata de P2 terminada.
 """
+
 import json
+
 import mlflow
+from mlflow import MlflowClient
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
 import typer
 
-from mlflow import MlflowClient
-
 from mi_bici.config import MLFLOW_TRACKING_URI
-
 
 MODEL_NAME = "mibici-equipo02-p2-riesgo"
 MODEL_ARTIFACT = "model"
@@ -52,20 +52,13 @@ def validate_source(run) -> None:
     """Exige que el run sea una corrida candidata de P2 terminada."""
 
     if run.info.status != "FINISHED":
-        raise ValueError(
-            "La corrida de origen debe estar terminada."
-        )
+        raise ValueError("La corrida de origen debe estar terminada.")
 
     if run.data.tags.get("question") != "P2":
-        raise ValueError(
-            "La corrida de origen debe corresponder a P2."
-        )
+        raise ValueError("La corrida de origen debe corresponder a P2.")
 
     if run.data.tags.get("stage_of_work") != "candidate":
-        raise ValueError(
-            "Solo se registran corridas candidatas "
-            "(stage_of_work=candidate)."
-        )
+        raise ValueError("Solo se registran corridas candidatas (stage_of_work=candidate).")
 
 
 @app.command()
@@ -109,9 +102,7 @@ def main(
     try:
         original = mlflow.sklearn.load_model(source_uri)
     except Exception as exc:
-        raise RuntimeError(
-            f"No se pudo cargar el modelo desde {source_uri}."
-        ) from exc
+        raise RuntimeError(f"No se pudo cargar el modelo desde {source_uri}.") from exc
 
     typer.echo("Modelo original cargado correctamente.")
 
@@ -121,9 +112,7 @@ def main(
 
     existing = [
         version
-        for version in client.search_model_versions(
-            f"name = '{name}'"
-        )
+        for version in client.search_model_versions(f"name = '{name}'")
         if version.run_id == run_id
     ]
 
@@ -133,34 +122,23 @@ def main(
             key=lambda item: int(item.version),
         ).version
 
-        typer.echo(
-            f"Se reutiliza la versión existente: {version}"
-        )
+        typer.echo(f"Se reutiliza la versión existente: {version}")
 
     else:
-        typer.echo(
-            f"Registrando modelo en Registry: {name}"
-        )
+        typer.echo(f"Registrando modelo en Registry: {name}")
 
         version = mlflow.register_model(
             source_uri,
             name,
         ).version
 
-        typer.echo(
-            f"Versión registrada: {version}"
-        )
+        typer.echo(f"Versión registrada: {version}")
 
     # ---------------------------------------------------------
     # 4. Obtener métricas de la corrida
     # ---------------------------------------------------------
 
-    metrics = {
-        key: round(value, 4)
-        for key, value in sorted(
-            origin.data.metrics.items()
-        )
-    }
+    metrics = {key: round(value, 4) for key, value in sorted(origin.data.metrics.items())}
 
     # ---------------------------------------------------------
     # 5. Documentar modelo registrado
@@ -180,15 +158,9 @@ def main(
         ),
     )
 
-    lineage_text = "\n".join(
-        f"{key}: {value}"
-        for key, value in lineage.items()
-    )
+    lineage_text = "\n".join(f"{key}: {value}" for key, value in lineage.items())
 
-    metrics_text = "\n".join(
-        f"{key}: {value}"
-        for key, value in metrics.items()
-    )
+    metrics_text = "\n".join(f"{key}: {value}" for key, value in metrics.items())
 
     client.update_model_version(
         name=name,
@@ -225,17 +197,11 @@ def main(
 
     registered_uri = f"models:/{name}/{version}"
 
-    typer.echo(
-        f"Cargando modelo registrado: {registered_uri}"
-    )
+    typer.echo(f"Cargando modelo registrado: {registered_uri}")
 
-    registered = mlflow.sklearn.load_model(
-        registered_uri
-    )
+    registered = mlflow.sklearn.load_model(registered_uri)
 
-    typer.echo(
-        "Modelo registrado cargado correctamente."
-    )
+    typer.echo("Modelo registrado cargado correctamente.")
 
     # ---------------------------------------------------------
     # 8. Verificación básica original vs registrado
@@ -256,33 +222,22 @@ def main(
     )
 
     if input_example is not None:
-
-        if isinstance(input_example, dict):
-            example = pd.DataFrame(input_example)
-
-        elif isinstance(input_example, list):
+        if isinstance(input_example, (dict, list)):
             example = pd.DataFrame(input_example)
 
         else:
             example = input_example
 
-        original_prediction = original.predict(
-            example
-        )
+        original_prediction = original.predict(example)
 
-        registered_prediction = registered.predict(
-            example
-        )
+        registered_prediction = registered.predict(example)
 
         np.testing.assert_array_equal(
             original_prediction,
             registered_prediction,
         )
 
-        typer.echo(
-            "OK: original y registrado producen "
-            "las mismas predicciones."
-        )
+        typer.echo("OK: original y registrado producen las mismas predicciones.")
 
     else:
         typer.echo(
@@ -306,13 +261,9 @@ def main(
     )
 
     if str(resolved.version) != str(version):
-        raise RuntimeError(
-            "El alias champion no apunta a la versión esperada."
-        )
+        raise RuntimeError("El alias champion no apunta a la versión esperada.")
 
-    typer.echo(
-        f"OK: alias {ALIAS} apunta a versión {version}."
-    )
+    typer.echo(f"OK: alias {ALIAS} apunta a versión {version}.")
 
     # ---------------------------------------------------------
     # 10. Verificar carga mediante alias champion
@@ -320,46 +271,26 @@ def main(
 
     alias_uri = f"models:/{name}@{ALIAS}"
 
-    champion = mlflow.sklearn.load_model(
-        alias_uri
-    )
+    champion = mlflow.sklearn.load_model(alias_uri)
 
-    typer.echo(
-        f"OK: modelo champion cargado desde {alias_uri}."
-    )
+    typer.echo(f"OK: modelo champion cargado desde {alias_uri}.")
 
     if input_example is not None:
-
-        champion_prediction = champion.predict(
-            example
-        )
+        champion_prediction = champion.predict(example)
 
         np.testing.assert_array_equal(
             original_prediction,
             champion_prediction,
         )
 
-        typer.echo(
-            "OK: champion produce las mismas "
-            "predicciones que el modelo original."
-        )
+        typer.echo("OK: champion produce las mismas predicciones que el modelo original.")
 
     typer.echo("")
-    typer.echo(
-        "=========================================="
-    )
-    typer.echo(
-        "P2 registrado correctamente."
-    )
-    typer.echo(
-        f"Versión: {version}"
-    )
-    typer.echo(
-        f"URI: {alias_uri}"
-    )
-    typer.echo(
-        "=========================================="
-    )
+    typer.echo("==========================================")
+    typer.echo("P2 registrado correctamente.")
+    typer.echo(f"Versión: {version}")
+    typer.echo(f"URI: {alias_uri}")
+    typer.echo("==========================================")
 
 
 if __name__ == "__main__":

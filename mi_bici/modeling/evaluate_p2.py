@@ -1,13 +1,12 @@
 """Evaluación final del modelo P2 sobre el conjunto de prueba."""
 
 import argparse
-import json
 
+from loguru import logger
 import mlflow
+from mlflow import MlflowClient
 import mlflow.sklearn
 import pandas as pd
-from loguru import logger
-from mlflow import MlflowClient
 
 from mi_bici.config import PROJ_ROOT, RISK_PERCENTILE
 from mi_bici.features_p2 import DATASET_PATH
@@ -20,7 +19,6 @@ from mi_bici.modeling.train_p2 import (
     load_features,
     temporal_split,
 )
-
 
 MODEL_NAME = "mibici-equipo02-p2-riesgo"
 
@@ -87,12 +85,8 @@ def get_source_run_info(model_uri: str) -> dict:
                 RISK_PERCENTILE,
             )
         ),
-        "train_risk_threshold": source_run.data.params.get(
-            "train_risk_threshold"
-        ),
-        "features_data_version": source_run.data.params.get(
-            "features_data_version"
-        ),
+        "train_risk_threshold": source_run.data.params.get("train_risk_threshold"),
+        "features_data_version": source_run.data.params.get("features_data_version"),
     }
 
 
@@ -110,21 +104,14 @@ def main() -> None:
 
     model_info = get_source_run_info(args.model_uri)
 
-    logger.info(
-        f"Modelo: {model_info['model_name']} "
-        f"v{model_info['model_version']}"
-    )
+    logger.info(f"Modelo: {model_info['model_name']} v{model_info['model_version']}")
 
-    logger.info(
-        f"Run de origen: {model_info['source_run_id']}"
-    )
+    logger.info(f"Run de origen: {model_info['source_run_id']}")
 
     ablation = model_info["ablation"]
 
     if ablation is None:
-        raise ValueError(
-            "No se encontró el parámetro 'ablation' en el run de origen."
-        )
+        raise ValueError("No se encontró el parámetro 'ablation' en el run de origen.")
 
     logger.info(f"Ablación seleccionada: {ablation}")
 
@@ -150,7 +137,7 @@ def main() -> None:
     # 4. División temporal
     # ---------------------------------------------------------
 
-    train, validation, test = temporal_split(df)
+    train, _validation, test = temporal_split(df)
 
     if train.empty:
         raise ValueError("La partición TRAIN está vacía.")
@@ -158,9 +145,7 @@ def main() -> None:
     if test.empty:
         raise ValueError("La partición TEST está vacía.")
 
-    logger.info(
-        f"Observaciones TEST: {len(test):,}"
-    )
+    logger.info(f"Observaciones TEST: {len(test):,}")
 
     # ---------------------------------------------------------
     # 5. Reconstruir el threshold usando SOLO TRAIN
@@ -168,9 +153,7 @@ def main() -> None:
 
     risk_percentile = model_info["risk_percentile"]
 
-    risk_threshold = train["target_imbalance_ratio"].quantile(
-        risk_percentile
-    )
+    risk_threshold = train["target_imbalance_ratio"].quantile(risk_percentile)
 
     logger.info(
         f"Umbral de riesgo P{risk_percentile * 100:.0f} "
@@ -194,10 +177,7 @@ def main() -> None:
 
     features = ablation_features(ablation)
 
-    logger.info(
-        f"Ablación: {ablation} | "
-        f"Variables utilizadas: {len(features)}"
-    )
+    logger.info(f"Ablación: {ablation} | Variables utilizadas: {len(features)}")
 
     X_test = test[features]
     y_test = test["Risk"]
@@ -234,10 +214,7 @@ def main() -> None:
     # 10. Registrar evaluación final en MLflow
     # ---------------------------------------------------------
 
-    with mlflow.start_run(
-        run_name="evaluacion-final-p2"
-    ) as run:
-
+    with mlflow.start_run(run_name="evaluacion-final-p2") as run:
         log_p2_traceability()
 
         mlflow.set_tags(
@@ -289,9 +266,7 @@ def main() -> None:
                 "risk_percentile": risk_percentile,
                 "risk_threshold": float(risk_threshold),
                 "dataset": DATASET_PATH.name,
-                "features_data_version": model_info[
-                    "features_data_version"
-                ],
+                "features_data_version": model_info["features_data_version"],
                 "test_start": test["hour"].min().isoformat(),
                 "test_end": test["hour"].max().isoformat(),
                 "n_test": len(test),
@@ -328,34 +303,21 @@ def main() -> None:
                 artifact_path="config",
             )
 
-        logger.success(
-            f"Evaluación final P2 registrada. "
-            f"MLflow Run ID: {run.info.run_id}"
-        )
+        logger.success(f"Evaluación final P2 registrada. MLflow Run ID: {run.info.run_id}")
 
     # ---------------------------------------------------------
     # 11. Resultado final
     # ---------------------------------------------------------
 
-    logger.success(
-        f"TEST Recall: {test_metrics['recall']:.4f}"
-    )
+    logger.success(f"TEST Recall: {test_metrics['recall']:.4f}")
 
-    logger.success(
-        f"TEST Precision: {test_metrics['precision']:.4f}"
-    )
+    logger.success(f"TEST Precision: {test_metrics['precision']:.4f}")
 
-    logger.success(
-        f"TEST F1: {test_metrics['f1']:.4f}"
-    )
+    logger.success(f"TEST F1: {test_metrics['f1']:.4f}")
 
-    logger.success(
-        f"TEST ROC-AUC: {test_metrics['roc_auc']:.4f}"
-    )
+    logger.success(f"TEST ROC-AUC: {test_metrics['roc_auc']:.4f}")
 
-    logger.success(
-        f"Observaciones TEST: {len(test):,}"
-    )
+    logger.success(f"Observaciones TEST: {len(test):,}")
 
 
 if __name__ == "__main__":
