@@ -46,6 +46,10 @@ This installs the dependencies and the [pre-commit](https://pre-commit.com/) git
 Activate the environment with `source .venv/bin/activate` every time you open a new
 terminal to work on the project.
 
+If you use Anaconda, run `conda deactivate` before activating `.venv`. With the `base`
+environment also active, `mlflow` and `curl` can resolve to Anaconda's copies instead of the
+pinned versions. Check with `which mlflow python`: both must point to `.venv/bin/`.
+
 ### Windows (without `make` or `uv`)
 
 If you don't have `make` or `uv`, create the environment with the standard library's
@@ -375,9 +379,10 @@ Las métricas utilizadas son **Recall, Precision, F1 y ROC-AUC**. Recall es espe
 
 ### Resultados
 
-El modelo final corresponde al baseline con las 30 características.
+La tabla corresponde al baseline con las 30 características. El modelo seleccionado en la
+Entrega 2 es la versión sin desbalance actual (ver [Ablaciones](#ablaciones)).
 
-Resultados obtenidos sobre los tres conjuntos:
+Resultados del baseline sobre los tres conjuntos:
 
 | Conjunto | Recall | Precision | F1 | ROC-AUC |
 | --- | ---: | ---: | ---: | ---: |
@@ -415,7 +420,13 @@ Se realizaron pruebas de eliminación de grupos de variables para evaluar la con
 | Sin desbalance actual | 28 | 0.7313 | 0.5397 | 0.6210 | 0.8330 |
 | Sin flujo actual | 25 | 0.7290 | 0.5267 | 0.6116 | 0.8249 |
 
-Aunque la eliminación del desbalance actual produce un incremento marginal en Recall, el baseline presenta el mejor equilibrio general entre **Precision, F1 y ROC-AUC**. Por esta razón, se conserva el modelo con las 30 variables como modelo final de P2.
+En la Entrega 2 la selección se hizo solo con validación y con Recall como métrica principal.
+La versión **sin desbalance actual** (28 variables, `class_weight="balanced"`) obtuvo el mayor
+Recall de validación (0.7417 frente a 0.7391 del baseline), a cambio de una ligera baja en
+Precision, F1 y ROC-AUC, por lo que es el modelo seleccionado de P2. Está registrado como
+`mibici-equipo02-p2-riesgo` con el alias `champion`. La comparación completa, la búsqueda con
+nested runs y la justificación están en
+[Resultados de P2 en la Entrega 2](docs/p2_entrega2_resultados.md).
 
 Las variables que quita cada ablación están definidas en `ABLATIONS`, en `mi_bici/modeling/train_p2.py`:
 
@@ -428,7 +439,7 @@ Para reproducir la tabla, cada versión registra su propio run de MLflow (`P2-lo
 python -m mi_bici.modeling.train_p2 --ablation todas
 ```
 
-Con `--ablation sin_desbalance_actual` o `--ablation sin_flujo_actual` se entrena solo una. Las ablaciones se registran únicamente en MLflow y no reemplazan los archivos del modelo final en `models/`.
+Con `--ablation sin_desbalance_actual` o `--ablation sin_flujo_actual` se entrena solo una. Las ablaciones se registran únicamente en MLflow: los archivos locales de `models/` siempre corresponden al baseline, y el modelo seleccionado se obtiene del Model Registry (`models:/mibici-equipo02-p2-riesgo@champion`).
 
 ### Reproducibilidad de P2
 
@@ -709,6 +720,36 @@ también puedes escribir el comando en una sola línea.
 Cada pregunta implementa en su `train_pX.py` una función `run(model, params)` que entrena un
 solo modelo y abre una sola corrida de MLflow. Los modelos disponibles de cada pregunta se
 documentan en su sección.
+
+### 4. Reproducir el modelo elegido de cada pregunta
+
+`ingest` solo genera los viajes y el catálogo de estaciones. P1 y P2 leen además su propio
+dataset estación-hora, que hay que construir antes de entrenar. P3 calcula sus perfiles
+directamente desde los viajes.
+
+```bash
+python -m mi_bici.features_p1   # data/processed/p1_demanda_horaria.parquet
+python -m mi_bici.features_p2   # data/processed/features_p2.parquet
+```
+
+Después, en la terminal del paso 2 (los comandos funcionan igual en bash/zsh y PowerShell):
+
+```bash
+# P1: candidata B (HistGradientBoosting con max_iter=200 y learning_rate=0.05)
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=histgb -P max_iter=200 -P learning_rate=0.05
+
+# P2: regresión logística sin las variables de desbalance actual
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p2 -P ablation=sin_desbalance_actual
+
+# P3: K-Means sobre perfiles de uso, k = 3
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=3
+```
+
+- Sin hiperparámetros, `-P question=p1` entrena la candidata A, no la seleccionada.
+- En P3, `-P model=kmeans_perfil` es obligatorio aunque sea el valor por defecto: con
+  `model=default`, la corrida falla al registrar el parámetro `model`.
+- La ingesta regenera `references/data_manifest.json`. No hagas commit de ese cambio; descártalo
+  con `git restore references/data_manifest.json`.
 
 ## Buenas prácticas
 
