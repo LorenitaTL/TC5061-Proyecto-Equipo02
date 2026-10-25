@@ -23,7 +23,6 @@ fuga de información.
 """
 
 from pathlib import Path
-
 import joblib
 from loguru import logger
 import mlflow
@@ -33,21 +32,26 @@ import pandas as pd
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
+    ConfusionMatrixDisplay,
     accuracy_score,
     f1_score,
     precision_score,
     recall_score,
     roc_auc_score,
+    precision_recall_curve,
 )
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import typer
-
+import matplotlib.pyplot as plt
+from mlflow import MlflowClient
+from mlflow.models import infer_signature
 from mi_bici.config import (
     IMPUTER_STRATEGY,
     LOGISTIC_CLASS_WEIGHT,
     LOGISTIC_MAX_ITER,
     LOGISTIC_SOLVER,
+    MLFLOW_EXPERIMENT_NAME,
     PROJ_ROOT,
     RANDOM_STATE,
     RISK_PERCENTILE,
@@ -55,9 +59,12 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
+
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
-from mi_bici.modeling.tracking import configure_mlflow, log_traceability
+from mi_bici.modeling.tracking import configure_mlflow
+from mi_bici.modeling.tracking_p2 import log_p2_traceability
+from mlflow.models import infer_signature
 
 app = typer.Typer()
 
@@ -376,6 +383,341 @@ def evaluate_model(
     return metrics
 
 
+def run_hyperparameter_search(
+    input_path: Path,
+) -> None:
+    """
+    Ejecuta una búsqueda de hiperparámetros para P2 utilizando
+    nested runs de MLflow.
+
+    Una corrida padre representa la búsqueda completa y cada
+    combinación de hiperparámetros se registra como una corrida hija.
+    """
+
+    logger.info("Iniciando búsqueda de hiperparámetros P2...")
+
+    configure_mlflow()
+
+    features_data_version = calculate_sha256(input_path)
+
+    df = load_features(input_path)
+
+    train, validation, test = temporal_split(df)
+
+    risk_threshold = train["target_imbalance_ratio"].quantile(RISK_PERCENTILE)
+
+    train["Risk"] = create_risk_label(train, risk_threshold)
+    validation["Risk"] = create_risk_label(validation, risk_threshold)
+    test["Risk"] = create_risk_label(test, risk_threshold)
+
+    search_space = [
+        {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "ablation": "completo",
+        },
+        {
+            "C": 1.0,
+            "class_weight": None,
+            "ablation": "completo",
+        },
+        {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "ablation": "sin_desbalance_actual",
+        },
+        {
+            "C": 1.0,
+            "class_weight": "balanced",
+            "ablation": "sin_flujo_actual",
+        },
+    ]
+
+    with mlflow.start_run(
+        run_name="P2-logistic-regression-search"
+    ) as parent_run:
+
+        mlflow.set_tags(
+            {
+                "project": "MiBici",
+                "question": "P2",
+                "model_family": "LogisticRegression",
+                "stage_of_work": "search",
+                "search_type": "nested",
+                "business_question": BUSINESS_QUESTION,
+                "prediction_horizon": "1 hour",
+                "unit_of_analysis": "station-hour",
+                "features_data_version": features_data_version,
+                "team": "equipo02",
+                "git_commit": "32fb353",
+            }
+        )
+
+        mlflow.log_params(
+            {
+                "search_space": (
+                    "C=[1.0]; "
+                    "class_weight=[balanced,None]; "
+                    "ablation=[completo,"
+                    "sin_desbalance_actual,"
+                    "sin_flujo_actual]"
+                ),
+                "n_candidates": len(search_space),
+                "risk_percentile": RISK_PERCENTILE,
+                "class_weight": LOGISTIC_CLASS_WEIGHT,
+                "max_iter": LOGISTIC_MAX_ITER,
+                "solver": LOGISTIC_SOLVER,
+                "imputer_strategy": IMPUTER_STRATEGY,
+                "scaler": "StandardScaler",
+            }
+        )
+
+        logger.info(
+            f"MLflow parent Run ID: {parent_run.info.run_id}"
+        )
+
+        for candidate in search_space:
+
+            C = candidate["C"]
+            class_weight = candidate["class_weight"]
+
+            class_weight_name = (
+                "balanced"
+                if class_weight == "balanced"
+                else "none"
+            )
+
+            ablation = candidate["ablation"]
+            features = ablation_features(ablation)
+
+            # Features específicas de cada candidato
+            X_train = train[features]
+            y_train = train["Risk"]
+
+            X_validation = validation[features]
+            y_validation = validation["Risk"]
+
+            child_name = (
+                f"P2-search-C-{C}"
+                f"-weight-{class_weight_name}"
+                f"-ablation-{ablation}"
+            )
+
+            with mlflow.start_run(
+                run_name=child_name,
+                nested=True,
+            ) as child_run:
+
+                mlflow.set_tags(
+                    {
+                        "project": "MiBici",
+                        "question": "P2",
+                        "model_family": "LogisticRegression",
+                        "stage_of_work": "candidate",
+                        "search_type": "nested",
+                        "parent_run_id": parent_run.info.run_id,
+                        "team": "equipo02",
+                        "git_commit": "32fb353",
+                        "ablation": ablation,
+                    }
+                )
+
+                mlflow.log_params(
+                    {
+                        "C": C,
+                        "class_weight": class_weight,
+                        "ablation": ablation,
+                        "max_iter": LOGISTIC_MAX_ITER,
+                        "solver": LOGISTIC_SOLVER,
+                        "imputer_strategy": IMPUTER_STRATEGY,
+                        "scaler": "StandardScaler",
+                        "risk_percentile": RISK_PERCENTILE,
+                        "features_data_version": features_data_version,
+                    }
+                )
+
+                model = Pipeline(
+                    steps=[
+                        (
+                            "imputer",
+                            SimpleImputer(
+                                strategy=IMPUTER_STRATEGY
+                            ),
+                        ),
+                        (
+                            "scaler",
+                            StandardScaler(),
+                        ),
+                        (
+                            "classifier",
+                            LogisticRegression(
+                                C=C,
+                                max_iter=LOGISTIC_MAX_ITER,
+                                class_weight=class_weight,
+                                solver=LOGISTIC_SOLVER,
+                                random_state=RANDOM_STATE,
+                                n_jobs=-1,
+                            ),
+                        ),
+                    ]
+                )
+
+                logger.info(
+                    f"Entrenando candidato "
+                    f"C={C}, "
+                    f"class_weight={class_weight_name}, "
+                    f"ablation={ablation}..."
+                )
+
+                model.fit(X_train, y_train)
+
+                # ---------------------------------------------------------
+                # Validation metrics
+                # ---------------------------------------------------------
+
+                validation_metrics = evaluate_model(
+                    model,
+                    X_validation,
+                    y_validation,
+                    "validation",
+                )
+
+                for metric_name, value in validation_metrics.items():
+                    mlflow.log_metric(
+                        f"validation_{metric_name}",
+                        float(value),
+                    )
+
+                # ---------------------------------------------------------
+                # Validation plots
+                # ---------------------------------------------------------
+
+                y_validation_pred = model.predict(
+                    X_validation
+                )
+
+                y_validation_proba = model.predict_proba(
+                    X_validation
+                )[:, 1]
+
+                # Confusion matrix
+                fig, ax = plt.subplots(figsize=(6, 5))
+
+                ConfusionMatrixDisplay.from_predictions(
+                    y_validation,
+                    y_validation_pred,
+                    ax=ax,
+                )
+
+                ax.set_title(
+                    f"Confusion Matrix - "
+                    f"C={C}, "
+                    f"class_weight={class_weight_name}, "
+                    f"ablation={ablation}"
+                )
+
+                mlflow.log_figure(
+                    fig,
+                    "plots/confusion_matrix_validation.png",
+                )
+
+                plt.close(fig)
+
+                # Precision-Recall curve
+                precision, recall, _ = precision_recall_curve(
+                    y_validation,
+                    y_validation_proba,
+                )
+
+                fig, ax = plt.subplots(figsize=(6, 5))
+
+                ax.plot(
+                    recall,
+                    precision,
+                )
+
+                ax.set_xlabel("Recall")
+                ax.set_ylabel("Precision")
+
+                ax.set_title(
+                    f"Precision-Recall Curve - "
+                    f"C={C}, "
+                    f"class_weight={class_weight_name}, "
+                    f"ablation={ablation}"
+                )
+
+                ax.grid(True)
+
+                mlflow.log_figure(
+                    fig,
+                    "plots/precision_recall_curve_validation.png",
+                )
+
+                plt.close(fig)
+
+                # ---------------------------------------------------------
+                # Model
+                # ---------------------------------------------------------
+
+                input_example = X_validation.head(5)
+
+                signature = infer_signature(
+                    X_train,
+                    model.predict(X_train),
+                )
+
+                mlflow.sklearn.log_model(
+                    model,
+                    artifact_path="model",
+                    signature=signature,
+                    input_example=input_example,
+                    skops_trusted_types=["numpy.dtype"],
+                )
+
+                # ---------------------------------------------------------
+                # Configuration artifact
+                # ---------------------------------------------------------
+
+                config_path = PROJ_ROOT / "mi_bici" / "config.py"
+
+                if config_path.exists():
+                    mlflow.log_artifact(
+                        str(config_path),
+                        artifact_path="config",
+                    )
+
+                # ---------------------------------------------------------
+                # Additional traceability information
+                # ---------------------------------------------------------
+
+                mlflow.log_metric(
+                    "train_observations",
+                    float(len(train)),
+                )
+
+                mlflow.log_metric(
+                    "validation_observations",
+                    float(len(validation)),
+                )
+
+                mlflow.log_param(
+                    "train_risk_threshold",
+                    float(risk_threshold),
+                )
+
+                logger.success(
+                    f"C={C} | "
+                    f"class_weight={class_weight_name} | "
+                    f"ablation={ablation} | "
+                    f"Validation Recall="
+                    f"{validation_metrics['recall']:.4f}"
+                )
+
+    logger.success(
+        "Búsqueda de hiperparámetros P2 terminada."
+    )
+
+
 # ---------------------------------------------------------
 # Entrenamiento
 # ---------------------------------------------------------
@@ -443,10 +785,13 @@ def train_model(
         # Tags de trazabilidad
         # -------------------------------------------------
 
-        log_traceability("P2")
+        log_p2_traceability()
         mlflow.set_tags(
             {
                 "project": "MiBici",
+                "question": "P2",
+                "model_family": "LogisticRegression",
+                "stage_of_work": "baseline" if ablation == "completo" else "candidate",
                 "business_question": BUSINESS_QUESTION,
                 "prediction_horizon": "1 hour",
                 "unit_of_analysis": "station-hour",
@@ -630,6 +975,60 @@ def train_model(
         )
 
         # -------------------------------------------------
+        # 9.1 Matriz de confusión para P2
+        # -------------------------------------------------
+
+        test_predictions = model.predict(X_test)
+
+        confusion_matrix_display = ConfusionMatrixDisplay.from_predictions(
+            y_test,
+            test_predictions,
+            display_labels=["Riesgo normal", "Alto riesgo"],
+            values_format="d",
+        )
+
+        confusion_matrix_display.ax_.set_title(
+            "P2 - Matriz de confusión en TEST"
+        )
+
+        mlflow.log_figure(
+            confusion_matrix_display.figure_,
+            "plots/confusion_matrix_test.png",
+        )
+
+        plt.close(confusion_matrix_display.figure_) 
+
+
+        # -------------------------------------------------
+        # 9.2 Curva Precision-Recall para P2
+        # -------------------------------------------------
+
+        test_probabilities = model.predict_proba(X_test)[:, 1]
+
+        precision_values, recall_values, _ = precision_recall_curve(
+            y_test,
+            test_probabilities,
+        )
+
+        fig, ax = plt.subplots()
+
+        ax.plot(
+            recall_values,
+            precision_values,
+        )
+
+        ax.set_title("P2 - Curva Precision-Recall en TEST")
+        ax.set_xlabel("Recall")
+        ax.set_ylabel("Precision")
+        ax.grid(True)
+
+        mlflow.log_figure(
+            fig,
+            "plots/precision_recall_curve_test.png",
+        )
+
+        plt.close(fig)
+        # -------------------------------------------------
         # 10. Registrar métricas en MLflow
         # -------------------------------------------------
 
@@ -703,14 +1102,64 @@ def train_model(
         mlflow.log_text(str(risk_threshold), THRESHOLD_PATH.name)
 
         # -------------------------------------------------
+        # 12.1 Registrar manifiesto de datos
+        # -------------------------------------------------
+
+        data_manifest_path = PROJ_ROOT / "references" / "data_manifest.json"
+
+        if data_manifest_path.is_file():
+            mlflow.log_artifact(
+                str(data_manifest_path),
+                artifact_path="data",
+            )
+        else:
+            logger.warning(
+                f"No se encontró el manifiesto de datos: {data_manifest_path}"
+            )
+
+        # -------------------------------------------------
+        # 12.2 Registrar configuración
+        # -------------------------------------------------
+
+        config_path = PROJ_ROOT / "mi_bici" / "config.py"
+
+        if config_path.is_file():
+            mlflow.log_artifact(
+                str(config_path),
+                artifact_path="config",
+            )
+        else:
+            logger.warning(
+                f"No se encontró el archivo de configuración: {config_path}"
+            )
+
+        # -------------------------------------------------
         # 13. Registrar modelo en MLflow
         # -------------------------------------------------
 
-        mlflow.sklearn.log_model(
+        signature= infer_signature(
+            X_test,
+            model.predict(X_test),
+        )
+
+        model_info = mlflow.sklearn.log_model(
             model,
             name="p2_risk_model",
+            signature=signature,
+            input_example=X_test.head(5),
             skops_trusted_types=["numpy.dtype"],
         )
+
+        # -------------------------------------------------
+        # 13.1 Registrar linaje del modelo
+
+        logger.success("Modelo registrado en MLflow Model Registry.")
+        '''logger.success(
+            f"Modelo: mibici-equipo02-p2-riesgo "
+            f"v{model_info.registered_model_version}"
+        )'''
+
+
 
         logger.success("Modelo registrado en MLflow.")
 
@@ -726,5 +1175,42 @@ def train_model(
             logger.success(f"Threshold: {THRESHOLD_PATH}")
 
 
+
+def run(model: str, params: dict):
+    """
+    Entry point for P2 training.
+
+    model="default" -> baseline / ablation training
+    model="search"  -> nested hyperparameter search
+    """
+
+    input_path = Path(params.get("input_path", DATASET_PATH))
+    ablation = params.get("ablation", "completo")
+
+    # Hyperparameter search
+    if model == "search":
+        return run_hyperparameter_search(input_path)
+
+    # Normal P2 training
+    if ablation == "todas":
+        ablations = list(ABLATIONS)
+    elif ablation in ABLATIONS:
+        ablations = [ablation]
+    else:
+        raise ValueError(
+            f"Ablación desconocida: {ablation}. "
+            f"Opciones: {list(ABLATIONS)}"
+        )
+
+    run_ids = []
+
+    for name in ablations:
+        run_id = train_model(input_path, name)
+        run_ids.append(run_id)
+
+    return run_ids
+
+
 if __name__ == "__main__":
     app()
+
