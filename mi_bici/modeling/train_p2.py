@@ -22,6 +22,7 @@ exclusivamente utilizando el conjunto de entrenamiento para evitar
 fuga de información.
 """
 
+from contextlib import nullcontext
 from pathlib import Path
 
 import joblib
@@ -431,7 +432,14 @@ def run_hyperparameter_search(
         },
     ]
 
-    with mlflow.start_run(run_name="P2-logistic-regression-search") as parent_run:
+    parent_run = mlflow.active_run()
+
+    if parent_run is None:
+        parent_context = mlflow.start_run(run_name="P2-logistic-regression-search")
+    else:
+        parent_context = nullcontext(parent_run)
+
+    with parent_context as parent_run:
         mlflow.set_tags(
             {
                 "project": "MiBici",
@@ -755,7 +763,14 @@ def train_model(
 
     features_data_version = calculate_sha256(input_path)
 
-    with mlflow.start_run(run_name=ablation_run_name(ablation)) as run:
+    run = mlflow.active_run()
+
+    if run is None:
+        run_context = mlflow.start_run(run_name=ablation_run_name(ablation))
+    else:
+        run_context = nullcontext(run)
+
+    with run_context as run:
         # -------------------------------------------------
         # Tags de trazabilidad
         # -------------------------------------------------
@@ -828,7 +843,6 @@ def train_model(
         mlflow.log_params(
             {
                 # Modelo
-                "model": ("LogisticRegression"),
                 "class_weight": LOGISTIC_CLASS_WEIGHT,
                 "max_iter": LOGISTIC_MAX_ITER,
                 "solver": LOGISTIC_SOLVER,
