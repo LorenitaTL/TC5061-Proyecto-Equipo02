@@ -60,6 +60,7 @@ from mi_bici.config import (
     TRAIN_FRACTION,
     VALIDATION_FRACTION,
 )
+from mi_bici.data_tracking import log_training_data
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
 from mi_bici.modeling.tracking import configure_mlflow
@@ -558,6 +559,13 @@ def run_hyperparameter_search(
                     f"ablation={ablation}..."
                 )
 
+                log_training_data(
+                    X_train.assign(Risk=y_train.to_numpy()),
+                    name=f"p2_search_{ablation}_{class_weight_name}",
+                    source=input_path.resolve().as_uri(),
+                    target="Risk",
+                )
+
                 model.fit(X_train, y_train)
 
                 # ---------------------------------------------------------
@@ -834,6 +842,13 @@ def train_model(
         test["Risk"] = create_risk_label(
             test,
             risk_threshold,
+        )
+
+        log_training_data(
+            train[features + ["Risk"]],
+            name="p2_training_data",
+            source=input_path.resolve().as_uri(),
+            target="Risk",
         )
 
         # -------------------------------------------------
