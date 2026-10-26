@@ -72,7 +72,7 @@ create_environment:
 ## Make dataset
 .PHONY: data
 data: requirements
-	$(PYTHON_INTERPRETER) mi_bici/dataset.py
+	$(PYTHON_INTERPRETER) -m mi_bici.dataset main
 
 
 #################################################################################
