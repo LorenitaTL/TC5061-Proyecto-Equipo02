@@ -71,7 +71,7 @@ terminal. Without `make`, run the equivalent commands directly:
 | `make test`     | `python -m pytest tests`                                                            |
 | `make lint`     | `ruff format --check; ruff check`                                                   |
 | `make format`   | `ruff check --fix; ruff format`                                                     |
-| `make data`     | `python mi_bici/dataset.py`                                                         |
+| `make data`     | `python -m mi_bici.dataset main`                                                    |
 | `make clean`    | `Get-ChildItem -Recurse -Directory -Filter __pycache__ \| Remove-Item -Recurse -Force` |
 
 ### Pre-commit
@@ -83,6 +83,8 @@ On every `git commit`, the hooks in `.pre-commit-config.yaml` run on the staged 
   markers, private keys, and files larger than 1 MB.
 - `pytest` runs the test suite when the commit includes Python files. It uses the
   Python of the active environment, so activate `.venv` before committing.
+- `gitleaks` blocks the commit if the staged changes contain a secret (API keys, tokens,
+  passwords, connection strings). pre-commit downloads it on first use; nothing to install.
 
 If a hook modifies files, the commit is aborted. Review the changes, `git add` them, and
 commit again. To run the hooks on the whole repo:
@@ -90,6 +92,30 @@ commit again. To run the hooks on the whole repo:
 ```bash
 pre-commit run --all-files
 ```
+
+#### Secret scanning
+
+The `gitleaks` hook only checks what is staged, so `pre-commit run --all-files` does not
+scan the history. The `gitleaks` job in CI (`.github/workflows/pre-commit.yml`) scans the
+full history on every PR and every push to `main`. To run the same scan locally, install
+[gitleaks](https://github.com/gitleaks/gitleaks#installing) (`brew install gitleaks` on
+macOS, `winget install gitleaks` on Windows) and run:
+
+```bash
+gitleaks git -v --redact
+```
+
+`--redact` hides the secret values, so the output is safe to paste in a PR. The full
+history was scanned when the hook was added, with no findings.
+
+If gitleaks reports something:
+
+- **False positive** (an example hash, a test ID): add the `Fingerprint` from the output
+  to `.gitleaksignore` in the repo root, one per line, and explain why in the PR.
+- **Real secret:** revoke or rotate it in its service first. Once pushed to GitHub, treat it
+  as compromised, even if you delete it later. Removing it from the history means rewriting
+  `main`, so talk to the team before doing it.
+- **Never** skip the hook with `git commit --no-verify` to get a secret through.
 
 ## Git workflow
 
@@ -125,7 +151,7 @@ Then:
 6. Ask a teammate to review the PR.
 7. If the reviewer asks for changes, commit them on the same branch and `git push` again.
    The PR updates automatically.
-8. Once the PR is approved and the `pre-commit` and `tests` checks are green, merge it
+8. Once the PR is approved and the `pre-commit`, `gitleaks` and `tests` checks are green, merge it
    with **Squash and merge** and delete the branch.
 9. Go back to step 1 for your next change.
 
@@ -584,7 +610,7 @@ Requiere haber ejecutado antes la [ingesta](#ejecución). Desde la raíz del rep
 python -m mi_bici.features_p1
 python -m mi_bici.modeling.baseline_p1
 python -m mi_bici.modeling.train_p1
-python -m mi_bici.modeling.evaluate_p1 --model-uri models:/<ID_DEL_MODELO>
+python -m mi_bici.modeling.evaluate_p1 --model-uri "runs:/<RUN_ID_P1>/modelo_p1"
 
 # P2: features, baseline, modelo y ablaciones
 python -m mi_bici.features_p2
@@ -596,8 +622,9 @@ python -m mi_bici.modeling.train_p2 --ablation todas
 python -m mi_bici.modeling.train_p3
 ```
 
-El `<ID_DEL_MODELO>` de P1 aparece en la interfaz de MLflow, en la sección de modelos del run
-`hist_gradient_boosting_v2`.
+`<RUN_ID_P1>` es el identificador del run `hist_gradient_boosting_v2`. Se usa la forma
+`runs:/…/modelo_p1` porque `register_p1` verifica que la evaluación corresponda exactamente a
+ese modelo (ver [Registrar el modelo elegido](#5-registrar-el-modelo-elegido-de-cada-pregunta)).
 
 Para abrir la interfaz:
 
@@ -738,18 +765,67 @@ Después, en la terminal del paso 2 (los comandos funcionan igual en bash/zsh y 
 # P1: candidata B (HistGradientBoosting con max_iter=200 y learning_rate=0.05)
 mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=histgb -P max_iter=200 -P learning_rate=0.05
 
-# P2: regresión logística sin las variables de desbalance actual
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p2 -P ablation=sin_desbalance_actual
+# P2: búsqueda con nested runs; la hija seleccionada es
+# P2-search-C-1.0-weight-balanced-ablation-sin_desbalance_actual
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p2 -P model=search
 
 # P3: K-Means sobre perfiles de uso, k = 3
 mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=3
 ```
 
 - Sin hiperparámetros, `-P question=p1` entrena la candidata A, no la seleccionada.
+- En P2, `-P ablation=sin_desbalance_actual` (sin `model=search`) reproduce las mismas métricas
+  en una corrida suelta, pero guarda el modelo como `p2_risk_model` y `register_p2` no lo
+  acepta: para registrar se usa la hija de la búsqueda.
 - En P3, `-P model=kmeans_perfil` es obligatorio aunque sea el valor por defecto: con
   `model=default`, la corrida falla al registrar el parámetro `model`.
 - La ingesta regenera `references/data_manifest.json`. No hagas commit de ese cambio; descártalo
   con `git restore references/data_manifest.json`.
+
+### 5. Registrar el modelo elegido de cada pregunta
+
+Cada pregunta tiene un script `register_pX.py` que registra en el Model Registry la versión
+elegida, guarda su linaje (experimento, run de origen, `git_commit` y `data_version`) como
+etiquetas y descripción de la versión, le asigna el alias `champion` y comprueba que el modelo
+cargado por el alias da las mismas predicciones que el original. Los `<RUN_ID>` salen de la
+interfaz de MLflow o de la salida de cada `mlflow run`.
+
+```bash
+# P1: primero la evaluación final sobre prueba, que register_p1 exige
+python -m mi_bici.modeling.evaluate_p1 --model-uri "runs:/<RUN_ID_P1>/modelo_p1"
+python -m mi_bici.modeling.register_p1 --run-id <RUN_ID_P1> --evaluation-run-id <RUN_ID_DE_evaluacion_final_p1_v2>
+
+# P2: la hija P2-search-C-1.0-weight-balanced-ablation-sin_desbalance_actual
+python -m mi_bici.modeling.register_p2 --run-id <RUN_ID_HIJA_P2>
+
+# P3: el run p3-kmeans-perfil-k3
+python -m mi_bici.modeling.register_p3 --run-id <RUN_ID_P3>
+```
+
+| Pregunta | Modelo registrado | Se carga con |
+| --- | --- | --- |
+| P1 | `mibici-equipo02-p1-demanda` | `models:/mibici-equipo02-p1-demanda@champion` |
+| P2 | `mibici-equipo02-p2-riesgo` | `models:/mibici-equipo02-p2-riesgo@champion` |
+| P3 | `mibici-equipo02-p3-grupos` | `models:/mibici-equipo02-p3-grupos@champion` |
+
+**Esquema de ciclo de vida: aliases, no etapas.** MLflow 3 marca como obsoletas las etapas
+(`Staging`, `Production`) y recomienda aliases. `champion` señala la versión que se usa en
+producción; para promover otra versión o volver atrás basta con mover el alias, sin registrar
+de nuevo ni cambiar el código que carga el modelo, que siempre pide `@champion`. Se puede
+añadir un alias `challenger` para una candidata en evaluación. Las tres preguntas usan el mismo
+esquema, sin diferencias entre ellas. En este proyecto, "producción" significa la versión a la
+que apunta `champion` y cuya carga se comprobó contra el run de origen; no implica un servicio
+desplegado. Para promover o revertir una versión:
+
+```python
+from mlflow import MlflowClient
+
+MlflowClient().set_registered_model_alias("<modelo>", "champion", "<versión>")
+```
+
+Limitación conocida: en las hijas de la búsqueda de P2, `git_commit` está fijo en el código
+(`32fb353`) y `register_p2` lee `data_version` de una etiqueta que la búsqueda no registra, así
+que el linaje de P2 en el Registry muestra ese commit y deja `data_version` vacío.
 
 ## Buenas prácticas
 
