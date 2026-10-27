@@ -574,7 +574,8 @@ La comparación de las corridas, la justificación de la selección y el registr
 ## Experimento base en MLflow
 
 Las tres preguntas registran sus runs en un solo experimento, `mibici-equipo02`, en la base
-local `mlflow.db`, que se puede cambiar con la variable de entorno `MLFLOW_TRACKING_URI`. Los
+local `mlflow.db`, que se puede cambiar con la variable de entorno `MLFLOW_TRACKING_URI` (ver
+[Apuntar al servidor](#2-apuntar-al-servidor)). Los
 artefactos se guardan en `mlartifacts/`. Ambos están excluidos de Git.
 
 Requiere haber ejecutado antes la [ingesta](#ejecución). Desde la raíz del repositorio:
@@ -656,7 +657,47 @@ terminal abierta mientras trabajas.
 
 ### 2. Apuntar al servidor
 
-En otra terminal, desde la raíz del repositorio:
+El código sabe a qué servidor enviar los runs por la variable de entorno
+`MLFLOW_TRACKING_URI`, que se lee en `mi_bici/config.py`. Hay dos formas de definirla.
+
+#### Opción A: archivo `.env` (recomendada)
+
+Se configura una sola vez y sirve en todas las terminales:
+
+```bash
+# macOS / Linux
+cp .env.example .env
+```
+
+```powershell
+# Windows (PowerShell)
+Copy-Item .env.example .env
+```
+
+Al importar `mi_bici.config`, `load_dotenv()` carga las variables de `.env`. Funciona igual con
+`python -m ...` que con `mlflow run`.
+
+- `.env.example` es la plantilla y sí se sube a Git. Contiene todas las variables que usa el
+  proyecto, con valores de ejemplo y sin secretos.
+- `.env` es la copia de cada desarrollador. Está en `.gitignore` y nunca se sube.
+- Si una variable ya está definida en la terminal (con `export` o `$env:`), ese valor gana
+  sobre el de `.env`.
+- Con `.env` apuntando al servidor, el servidor del paso 1 debe estar levantado. Si no lo
+  está, las corridas fallan al conectarse. Para trabajar sin servidor, comenta la línea en
+  `.env` y el código vuelve a escribir directo en `mlflow.db`.
+
+Variables disponibles:
+
+| Variable | Uso | Valor por defecto si no se define |
+| --- | --- | --- |
+| `MLFLOW_TRACKING_URI` | Servidor de tracking de MLflow | `sqlite:///<raíz del repositorio>/mlflow.db` |
+
+Si agregas un `os.getenv()` al código, agrega la variable a `.env.example` y a esta tabla en
+el mismo PR.
+
+#### Opción B: variable en la terminal
+
+Solo dura mientras la terminal esté abierta. En otra terminal, desde la raíz del repositorio:
 
 ```bash
 # macOS / Linux
@@ -670,9 +711,8 @@ export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 $env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 ```
 
-La variable solo dura mientras la terminal esté abierta; hay que definirla de nuevo en cada
-terminal nueva. Sin ella, el código escribe directamente en `mlflow.db`, sin pasar por el
-servidor.
+Hay que definirla de nuevo en cada terminal nueva. Sin ella y sin `.env`, el código escribe
+directamente en `mlflow.db`, sin pasar por el servidor.
 
 ### 3. Ejecutar con `mlflow run`
 
