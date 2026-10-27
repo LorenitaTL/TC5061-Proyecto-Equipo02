@@ -62,3 +62,4 @@ def test_training_is_reproducible() -> None:
     mae_b = mean_absolute_error(y_test, predictions_b)
 
     np.testing.assert_allclose(mae_a, mae_b, rtol=0, atol=1e-12)
+    
