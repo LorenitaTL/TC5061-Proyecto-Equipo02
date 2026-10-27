@@ -1,0 +1,16 @@
+# Entorno separado para validar datos con DeepChecks (make validate-data).
+# DeepChecks 0.19.1 no funciona con numpy 2, scikit-learn >= 1.6, pandas 3 ni
+# setuptools >= 81, así que este entorno fija versiones anteriores. No sirve para
+# entrenar: los modelos se entrenan con requirements.txt.
+anywidget==0.11.0
+deepchecks==0.19.1
+loguru==0.7.3
+numpy==1.26.4
+pandas==2.3.3
+pyarrow==25.0.1
+pytest==9.1.1
+python-dotenv==1.2.4
+scikit-learn==1.5.2
+setuptools==80.10.2
+typer==0.27.3
+-e .

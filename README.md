@@ -69,6 +69,11 @@ terminal. Without `make`, run the equivalent commands directly:
 | `make` target   | Equivalent command                                                                  |
 | --------------- | ----------------------------------------------------------------------------------- |
 | `make test`     | `python -m pytest tests`                                                            |
+| `make coverage` | `python -m pytest tests --cov=mi_bici --cov-report=term-missing`                    |
+| `make security` | `bandit -r mi_bici; pip-audit -r requirements.txt; pip-audit -r requirements-validation.txt` |
+| `make create_validation_environment` | `uv venv .venv-validation --python 3.12; uv pip install --python .venv-validation -r requirements-validation.txt` |
+| `make validate-data` | `.venv-validation\Scripts\python -m mi_bici.data_validation`                   |
+| `make test-validation` | `.venv-validation\Scripts\python -m pytest tests/test_data_validation.py`    |
 | `make lint`     | `ruff format --check; ruff check`                                                   |
 | `make format`   | `ruff check --fix; ruff format`                                                     |
 | `make data`     | `python -m mi_bici.dataset main`                                                    |
