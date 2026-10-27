@@ -17,6 +17,20 @@ from mi_bici.modeling.tracking import configure_mlflow, log_run_config
 from mi_bici.modeling.tracking_p1 import log_p1_traceability
 
 
+def build_model(**params) -> HistGradientBoostingRegressor:
+    """Construye el candidato P1 con configuración reproducible."""
+    model = HistGradientBoostingRegressor(
+        loss="squared_error",
+        max_iter=100,
+        max_leaf_nodes=31,
+        learning_rate=0.1,
+        l2_regularization=1.0,
+        random_state=RANDOM_STATE,
+    )
+    model.set_params(**params)
+    return model
+
+
 def run(model: str, params: dict[str, str]) -> str:
     """Ejecuta un modelo de P1 y devuelve su identificador de corrida."""
     model_name = model.lower()
@@ -74,16 +88,7 @@ def run(model: str, params: dict[str, str]) -> str:
     X_train = train_sample[FEATURES].astype("float32")
     y_train = train_sample["trip_count"]
 
-    model = HistGradientBoostingRegressor(
-        loss="squared_error",
-        max_iter=100,
-        max_leaf_nodes=31,
-        learning_rate=0.1,
-        l2_regularization=1.0,
-        random_state=RANDOM_STATE,
-    )
-
-    model.set_params(**effective)
+    model = build_model(**effective)
 
     configure_mlflow()
 
