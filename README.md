@@ -848,7 +848,23 @@ _Pendiente._
 Responsables: [@clsrivas](https://github.com/clsrivas) y
 [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
 
-_Pendiente._
+`tests/test_baseline_p2.py` prueba el baseline de persistencia con datos sintéticos
+pequeños, sin leer archivos ni usar MLflow:
+
+- `persistence_prediction`: un desbalance igual al umbral se predice como riesgo; la
+  predicción es 0/1, conserva el índice y solo usa la hora actual.
+- `persistence_metrics`: valores calculados a mano (TP=1, FP=2, FN=1, TN=3), persistencia
+  perfecta, ausencia de predicciones positivas y las cinco métricas que se registran en
+  MLflow.
+
+```bash
+python -m pytest tests/test_baseline_p2.py -v
+```
+
+Si un split tiene una sola clase en la etiqueta, `roc_auc` vale `nan` (scikit-learn lo
+advierte); no se fija en una prueba porque depende de la versión.
+
+![Pruebas del baseline de P2](reports/figures/evidencia/pytest_p2_baseline.png)
 
 ### Seguridad
 
