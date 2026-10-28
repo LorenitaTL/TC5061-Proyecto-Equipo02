@@ -536,11 +536,17 @@ aceptan los hiperparámetros `n_clusters`, `n_init` y `features` (lista separada
 
 ```bash
 # Baseline y corridas candidatas
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_ubicacion
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=3
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=4
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=5
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=4 -P features=balance_am,balance_pm,balance_dia,share_fin_semana
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_ubicacion
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=3
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=4
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=5
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=4 \
+  -P features=balance_am,balance_pm,balance_dia,share_fin_semana
 ```
 
 `python -m mi_bici.modeling.train_p3` registra el baseline y el candidato con los valores por
@@ -641,13 +647,15 @@ comando del servidor es el mismo en los dos sistemas:
 ```bash
 # macOS / Linux
 source .venv/bin/activate
-mlflow server --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5000
+mlflow server --backend-store-uri sqlite:///mlflow.db \
+  --host 127.0.0.1 --port 5000
 ```
 
 ```powershell
 # Windows (PowerShell)
 .venv\Scripts\activate
-mlflow server --backend-store-uri sqlite:///mlflow.db --host 127.0.0.1 --port 5000
+mlflow server --backend-store-uri sqlite:///mlflow.db `
+  --host 127.0.0.1 --port 5000
 ```
 
 La interfaz queda en <http://127.0.0.1:5000>. En macOS, si el puerto 5000 está ocupado por
@@ -737,14 +745,17 @@ Después, en la terminal del paso 2 (los comandos funcionan igual en bash/zsh y 
 
 ```bash
 # P1: candidata B (HistGradientBoosting con max_iter=200 y learning_rate=0.05)
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=histgb -P max_iter=200 -P learning_rate=0.05
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p1 -P model=histgb -P max_iter=200 -P learning_rate=0.05
 
 # P2: búsqueda con nested runs; la hija seleccionada es
 # P2-search-C-1.0-weight-balanced-ablation-sin_desbalance_actual
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p2 -P model=search
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p2 -P model=search
 
 # P3: K-Means sobre perfiles de uso, k = 3
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=3
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=3
 ```
 
 - Sin hiperparámetros, `-P question=p1` entrena la candidata A, no la seleccionada.
@@ -767,7 +778,8 @@ interfaz de MLflow o de la salida de cada `mlflow run`.
 ```bash
 # P1: primero la evaluación final sobre prueba, que register_p1 exige
 python -m mi_bici.modeling.evaluate_p1 --model-uri "runs:/<RUN_ID_P1>/modelo_p1"
-python -m mi_bici.modeling.register_p1 --run-id <RUN_ID_P1> --evaluation-run-id <RUN_ID_DE_evaluacion_final_p1_v2>
+python -m mi_bici.modeling.register_p1 --run-id <RUN_ID_P1> \
+  --evaluation-run-id <RUN_ID_DE_evaluacion_final_p1_v2>
 
 # P2: la hija P2-search-C-1.0-weight-balanced-ablation-sin_desbalance_actual
 python -m mi_bici.modeling.register_p2 --run-id <RUN_ID_HIJA_P2>

@@ -118,13 +118,19 @@ servidor de MLflow disponible.
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
 
 # Baseline
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_ubicacion
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_ubicacion
 
 # Candidatas A, B, C y D
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=3
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=4
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=5
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p3 -P model=kmeans_perfil -P n_clusters=4 -P features=balance_am,balance_pm,balance_dia,share_fin_semana
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=3
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=4
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=5
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
+  -P question=p3 -P model=kmeans_perfil -P n_clusters=4 \
+  -P features=balance_am,balance_pm,balance_dia,share_fin_semana
 ```
 
 En PowerShell, usar `$env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"`. En macOS, el
