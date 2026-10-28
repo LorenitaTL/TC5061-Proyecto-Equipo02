@@ -1,12 +1,15 @@
-Generating the docs
-----------
+# Documentación
 
-Use [mkdocs](http://www.mkdocs.org/) structure to update the documentation.
+Esta carpeta contiene:
 
-Build locally with:
+- `p1_prediccion_demanda.md`, `p1_entrega2_resultados.md`, `p2_entrega2_resultados.md` y
+  `p3_entrega2_resultados.md`: los reportes de cada pregunta.
+- `docs/` y `mkdocs.yml`: un sitio de [MkDocs](https://www.mkdocs.org/) con la portada del
+  proyecto y los primeros pasos.
 
-    mkdocs build
+Para construir el sitio, desde esta carpeta y con `.venv` activo:
 
-Serve locally with:
-
-    mkdocs serve
+```bash
+mkdocs build   # genera el sitio en site/
+mkdocs serve   # lo sirve en http://127.0.0.1:8000
+```

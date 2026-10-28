@@ -214,13 +214,15 @@ $env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 ### Entrenamiento baseline
 
 ```powershell
-mlflow run . -e train -P question=p2 -P model=default --env-manager local --experiment-name mibici-equipo02
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p2 -P model=default
 ```
 
 ### Búsqueda de hiperparámetros
 
 ```powershell
-mlflow run . -e train -P question=p2 -P model=search --env-manager local --experiment-name mibici-equipo02
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p2 -P model=search
 ```
 
 La implementación utiliza el contrato:
