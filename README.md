@@ -88,6 +88,8 @@ On every `git commit`, the hooks in `.pre-commit-config.yaml` run on the staged 
   markers, private keys, and files larger than 1 MB.
 - `pytest` runs the test suite when the commit includes Python files. It uses the
   Python of the active environment, so activate `.venv` before committing.
+- `gitleaks` blocks the commit if the staged changes contain a secret (API keys, tokens,
+  passwords, connection strings). pre-commit downloads it on first use; nothing to install.
 
 If a hook modifies files, the commit is aborted. Review the changes, `git add` them, and
 commit again. To run the hooks on the whole repo:
@@ -95,6 +97,30 @@ commit again. To run the hooks on the whole repo:
 ```bash
 pre-commit run --all-files
 ```
+
+#### Secret scanning
+
+The `gitleaks` hook only checks what is staged, so `pre-commit run --all-files` does not
+scan the history. The `gitleaks` job in CI (`.github/workflows/pre-commit.yml`) scans the
+full history on every PR and every push to `main`. To run the same scan locally, install
+[gitleaks](https://github.com/gitleaks/gitleaks#installing) (`brew install gitleaks` on
+macOS, `winget install gitleaks` on Windows) and run:
+
+```bash
+gitleaks git -v --redact
+```
+
+`--redact` hides the secret values, so the output is safe to paste in a PR. The full
+history was scanned when the hook was added, with no findings.
+
+If gitleaks reports something:
+
+- **False positive** (an example hash, a test ID): add the `Fingerprint` from the output
+  to `.gitleaksignore` in the repo root, one per line, and explain why in the PR.
+- **Real secret:** revoke or rotate it in its service first. Once pushed to GitHub, treat it
+  as compromised, even if you delete it later. Removing it from the history means rewriting
+  `main`, so talk to the team before doing it.
+- **Never** skip the hook with `git commit --no-verify` to get a secret through.
 
 ## Git workflow
 
@@ -130,7 +156,7 @@ Then:
 6. Ask a teammate to review the PR.
 7. If the reviewer asks for changes, commit them on the same branch and `git push` again.
    The PR updates automatically.
-8. Once the PR is approved and the `pre-commit` and `tests` checks are green, merge it
+8. Once the PR is approved and the `pre-commit`, `gitleaks` and `tests` checks are green, merge it
    with **Squash and merge** and delete the branch.
 9. Go back to step 1 for your next change.
 
