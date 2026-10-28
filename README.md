@@ -801,6 +801,62 @@ Limitación conocida: en las hijas de la búsqueda de P2, `git_commit` está fij
 (`32fb353`) y `register_p2` lee `data_version` de una etiqueta que la búsqueda no registra, así
 que el linaje de P2 en el Registry muestra ese commit y deja `data_version` vacío.
 
+## Pruebas y chequeos
+
+Las pruebas viven en `tests/` y se corren con `make test`. Las capturas de evidencia se guardan
+en `reports/figures/evidencia/`.
+
+### Reproducibilidad del entrenamiento
+
+#### P1
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+#### P2
+
+Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+#### P3
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+_Pendiente._
+
+### Validación de datos con DeepChecks
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+### Pruebas de P1
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+### Pruebas de P2
+
+Responsables: [@clsrivas](https://github.com/clsrivas) y
+[@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+### Seguridad
+
+Responsable: [@clsrivas](https://github.com/clsrivas).
+
+_Pendiente._
+
+### Cobertura
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+_Pendiente._
+
 ## Buenas prácticas
 
 - **Experimento único y runs con nombre descriptivo:** P1, P2 y P3 registran en
