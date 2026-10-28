@@ -801,6 +801,80 @@ Limitación conocida: en las hijas de la búsqueda de P2, `git_commit` está fij
 (`32fb353`) y `register_p2` lee `data_version` de una etiqueta que la búsqueda no registra, así
 que el linaje de P2 en el Registry muestra ese commit y deja `data_version` vacío.
 
+## Pruebas y chequeos
+
+Las pruebas viven en `tests/` y se corren con `make test`. Las capturas de evidencia se guardan
+en `reports/figures/evidencia/`.
+
+### Reproducibilidad del entrenamiento
+
+#### P1
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+#### P2
+
+Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+#### P3
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+`tests/test_reproducibility_p3.py` comprueba que el entrenamiento de P3 depende solo de la
+semilla. Usa datos sintéticos, así que no necesita los datos de MiBici ni un servidor de
+MLflow:
+
+```bash
+python -m pytest tests/test_reproducibility_p3.py -v
+```
+
+| Prueba | Qué valida |
+| :--- | :--- |
+| `test_fit_kmeans_is_reproducible_with_same_seed` | Dos ajustes de `fit_kmeans` con `RANDOM_STATE` dan exactamente las mismas etiquetas y centroides. |
+| `test_fit_kmeans_uses_random_state_by_default` | Sin semilla explícita, `fit_kmeans` usa `RANDOM_STATE`, así que el entrenamiento es reproducible aunque no se pase la semilla. |
+| `test_fit_kmeans_changes_with_another_seed_on_noisy_data` | Caso de control: con datos ruidosos, sin grupos claros, otra semilla da una agrupación distinta (ARI < 1). Si diera la misma, las pruebas anteriores no demostrarían que la semilla fija es la que hace reproducible el entrenamiento. |
+
+Las pruebas corren en CI en macOS y Windows, y en ambos los centroides coinciden exactamente.
+Los comandos para repetir las corridas de P3 en MLflow están en
+[Reproducibilidad de P3](#reproducibilidad-de-p3).
+
+![Pruebas de reproducibilidad de P3 en verde](reports/figures/evidencia/pytest_p3_reproducibilidad.png)
+
+### Validación de datos con DeepChecks
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+### Pruebas de P1
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+### Pruebas de P2
+
+Responsables: [@clsrivas](https://github.com/clsrivas) y
+[@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+### Seguridad
+
+Responsable: [@clsrivas](https://github.com/clsrivas).
+
+_Pendiente._
+
+### Cobertura
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+_Pendiente._
+
 ## Buenas prácticas
 
 - **Experimento único y runs con nombre descriptivo:** P1, P2 y P3 registran en
