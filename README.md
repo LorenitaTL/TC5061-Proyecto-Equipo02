@@ -817,7 +817,17 @@ en `reports/figures/evidencia/`.
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-_Pendiente._
+Se verifica la configuración de `build_model()` y que dos entrenamientos
+con los mismos datos sintéticos y semilla produzcan las mismas predicciones
+y el mismo MAE.
+
+Ejecución desde el ambiente principal:
+
+    python -m pytest tests/test_reproducibility_p1.py -v
+
+Resultado local: 2 pruebas aprobadas.
+
+![Reproducibilidad de P1](reports/figures/evidencia/pytest_p1_reproducibilidad.png)
 
 #### P2
 
@@ -835,13 +845,87 @@ _Pendiente._
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-_Pendiente._
+La validación se ejecuta en un ambiente separado con las dependencias de
+`requirements-validation.txt`. En la configuración local de Windows:
+
+    & "C:\venvs\mibici-validation\Scripts\python.exe" -m mi_bici.data_validation
+
+Las reglas propias revisan el dataset completo de P1: 4,862,675 filas.
+No se encontraron campos obligatorios faltantes, claves estación-hora
+duplicadas, discontinuidades horarias ni inconsistencias en los rezagos.
+
+Los nulos iniciales de `lag_1h` (426), `lag_24h` (10,180) y `lag_168h`
+(70,539) corresponden a falta de historia por estación; no se imputaron
+como parte de esta validación.
+
+DeepChecks ejecuta la suite general de integridad sobre una muestra
+reproducible de 10,000 filas; algunos checks pueden submuestrearla.
+Una suite separada comprueba cero nulos en campos obligatorios y cero
+claves estación-hora duplicadas sobre esa muestra.
+
+El diagnóstico de drift compara 10,000 filas de train y 10,000 de test
+con semilla 42 y las particiones temporales de P1. Ningún predictor supera
+los umbrales exploratorios configurados: 0.2 para variables categóricas
+y 0.1 para numéricas. La distancia KS del objetivo es 0.0359 y se reporta
+sin condición de aprobación.
+
+Los nulos de rezagos se excluyen del cálculo de FeatureDrift y se
+documentan aparte. Estos resultados describen distribuciones marginales
+globales; no prueban estabilidad por estación ni desempeño predictivo.
+Los umbrales no están calibrados con impacto de negocio.
+
+Reportes generados en `reports/`:
+
+- `p1_data_validation_summary.json`: estructura y rezagos del dataset completo.
+- `p1_data_integrity.html`: suite general sobre la muestra.
+- `p1_required_fields.html`: controles estrictos de campos obligatorios.
+- `p1_drift.html`: comparación entre train y test.
+
+Pruebas desde el ambiente de validación:
+
+    & "C:\venvs\mibici-validation\Scripts\python.exe" -m pytest tests/test_data_validation.py -v
+
+Resultado local: 16 pruebas aprobadas. Incluyen errores deliberados de
+integridad, cambios de distribución y comprobaciones de selección temporal
+y reproducibilidad de las muestras. Las cinco pruebas que requieren
+DeepChecks se omiten en el ambiente principal.
+
+El script genera diagnósticos; los conteos de problemas no constituyen
+un bloqueo automático del entrenamiento. En drift, un check sin ejecutar
+produce un error; superar un umbral se conserva como hallazgo.
+
+Detalle: [Diagnóstico de drift de P1](docs/p1_drift.md).
+
+![Campos obligatorios](reports/figures/evidencia/deepchecks_p1_campos_obligatorios.png)
+
+![Drift de P1](reports/figures/evidencia/deepchecks_p1_drift.png)
 
 ### Pruebas de P1
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-_Pendiente._
+Las pruebas utilizan datos sintéticos, un modelo de juguete y archivos
+Parquet temporales. No requieren los datos reales ni un servidor de MLflow.
+
+Cubren:
+
+- Baseline: prioridad semanal → diaria → horaria → cero, conservación de
+  ceros válidos, índice y entrada vacía.
+- Evaluación: MAE y RMSE con resultados conocidos, predicción perfecta,
+  una observación y rechazo de métricas sin datos.
+- Predicción: selección y orden de features, conversión a float32,
+  conservación de nulos y recorte de predicciones negativas.
+- Estaciones: identificadores faltantes, estaciones fuera del catálogo,
+  conteo por viaje afectado, estaciones del catálogo sin viajes y archivo vacío.
+
+Ejecución conjunta con reproducibilidad, desde el ambiente principal:
+
+    python -m pytest tests/test_reproducibility_p1.py tests/test_baseline_p1.py tests/test_evaluate_p1.py tests/test_data_quality.py -v
+
+Resultado local: 16 pruebas aprobadas: 2 de reproducibilidad,
+8 de baseline/evaluación y 6 de correspondencia de estaciones.
+
+![Pruebas de P1](reports/figures/evidencia/pytest_p1_pruebas.png)
 
 ### Pruebas de P2
 
