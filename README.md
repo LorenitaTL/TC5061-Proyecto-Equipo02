@@ -813,6 +813,10 @@ en `reports/figures/evidencia/`.
 
 ### Reproducibilidad del entrenamiento
 
+#### P1
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
 Se verifica la configuración de `build_model()` y que dos entrenamientos
 con los mismos datos sintéticos y semilla produzcan las mismas predicciones
 y el mismo MAE.
@@ -838,6 +842,8 @@ Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
 _Pendiente._
 
 ### Validación de datos con DeepChecks
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
 La validación se ejecuta en un ambiente separado con las dependencias de
 `requirements-validation.txt`. En la configuración local de Windows:
@@ -895,6 +901,8 @@ Detalle: [Diagnóstico de drift de P1](docs/p1_drift.md).
 ![Drift de P1](reports/figures/evidencia/deepchecks_p1_drift.png)
 
 ### Pruebas de P1
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
 Las pruebas utilizan datos sintéticos, un modelo de juguete y archivos
 Parquet temporales. No requieren los datos reales ni un servidor de MLflow.
