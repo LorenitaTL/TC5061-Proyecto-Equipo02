@@ -119,3 +119,87 @@ def test_deepchecks_required_conditions(clean_data, problem):
         assert result.passed()
     else:
         assert not result.passed()
+
+
+@pytest.mark.parametrize("introduce_drift", [False, True])
+def test_detects_feature_and_label_drift(introduce_drift):
+    pytest.importorskip("deepchecks")
+
+    from mi_bici.data_validation import run_p1_drift_validation
+
+    hours = pd.Series(range(240))
+    train = pd.DataFrame(
+        {
+            "hour_of_day": hours % 24,
+            "day_of_week": (hours // 24) % 7,
+            "is_weekend": ((hours // 24) % 7 >= 5).astype(int),
+            "lag_1h": hours % 20,
+            "lag_24h": hours % 30,
+            "lag_168h": hours % 40,
+            "trip_count": hours % 25,
+        }
+    )
+    test = train.copy()
+
+    if introduce_drift:
+        test["lag_1h"] += 1_000
+        test["trip_count"] += 1_000
+
+    result = run_p1_drift_validation(train, test)
+
+    assert not result.get_not_ran_checks()
+    feature_result, label_result = result.results
+
+    feature_score = feature_result.value["lag_1h"]["Drift score"]
+    label_score = label_result.value["Drift score"]
+
+    if introduce_drift:
+        assert feature_score > 0.9
+        assert label_score > 0.9
+        assert not feature_result.passed_conditions()
+    else:
+        assert feature_score == pytest.approx(0)
+        assert label_score == pytest.approx(0)
+        assert feature_result.passed_conditions()
+
+
+def test_drift_samples_respect_time_split_and_are_reproducible():
+    from mi_bici.data_validation import prepare_p1_drift_samples
+    from mi_bici.features_p1 import FEATURES
+    from mi_bici.modeling.splits_p1 import TRAIN_END, VALIDATION_END
+
+    # Cinco filas por partición, incluyendo las fechas de corte.
+    hours = pd.DatetimeIndex(
+        [
+            *pd.date_range(end=TRAIN_END - pd.Timedelta(hours=1), periods=5, freq="h"),
+            *pd.date_range(start=TRAIN_END, periods=5, freq="h"),
+            *pd.date_range(start=VALIDATION_END, periods=5, freq="h"),
+        ]
+    )
+    data = pd.DataFrame(
+        {
+            "station_id": ["A"] * len(hours),
+            "hour": hours,
+            "trip_count": range(len(hours)),
+        }
+    )
+    for column in FEATURES:
+        data[column] = 0
+
+    original = data.copy(deep=True)
+
+    train, test = prepare_p1_drift_samples(data, sample_size=3)
+    repeated_train, repeated_test = prepare_p1_drift_samples(data, sample_size=3)
+
+    assert len(train) == len(test) == 3
+    assert (train["hour"] < TRAIN_END).all()
+    assert (test["hour"] >= VALIDATION_END).all()
+    pd.testing.assert_frame_equal(train, repeated_train)
+    pd.testing.assert_frame_equal(test, repeated_test)
+    pd.testing.assert_frame_equal(data, original)
+
+    # Si hay menos filas que las solicitadas, conserva todas sin duplicarlas.
+    full_train, full_test = prepare_p1_drift_samples(data, sample_size=100)
+    assert len(full_train) == len(full_test) == 5
+    assert full_train["hour"].is_unique
+    assert full_test["hour"].is_unique
