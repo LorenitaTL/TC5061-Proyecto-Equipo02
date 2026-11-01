@@ -1038,10 +1038,33 @@ Los comandos para repetir las corridas de P3 en MLflow están en
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-La validación se ejecuta en un ambiente separado con las dependencias de
-`requirements-validation.txt`. En la configuración local de Windows:
+En Windows se recomienda clonar el repositorio en una ruta corta
+(por ejemplo, `C:\repos\mi-bici-equipo-2`) para reducir posibles problemas
+con rutas largas al instalar o cargar dependencias compiladas.
 
-    & "C:\venvs\mibici-validation\Scripts\python.exe" -m mi_bici.data_validation
+La validación se ejecuta en `.venv-validation`, un ambiente separado dentro
+del repositorio con las dependencias de `requirements-validation.txt`.
+Desde la raíz del repositorio, crearlo una vez con `uv` instalado:
+
+```bash
+uv venv .venv-validation --python 3.12
+uv pip install --python .venv-validation -r requirements-validation.txt
+```
+
+Ejecutar la validación en Windows (PowerShell):
+
+```powershell
+.\.venv-validation\Scripts\python.exe -m mi_bici.data_validation
+```
+
+En macOS / Linux:
+
+```bash
+.venv-validation/bin/python -m mi_bici.data_validation
+```
+
+La ejecución del reporte requiere el dataset procesado de P1.
+Las pruebas sintéticas pueden ejecutarse sin los datos reales.
 
 Las reglas propias revisan el dataset completo de P1: 4,862,675 filas.
 No se encontraron campos obligatorios faltantes, claves estación-hora
@@ -1074,9 +1097,20 @@ Reportes generados en `reports/`:
 - `p1_required_fields.html`: controles estrictos de campos obligatorios.
 - `p1_drift.html`: comparación entre train y test.
 
-Pruebas desde el ambiente de validación:
+Pruebas en Windows (PowerShell):
 
-    & "C:\venvs\mibici-validation\Scripts\python.exe" -m pytest tests/test_data_validation.py -v
+```powershell
+.\.venv-validation\Scripts\python.exe -m pytest tests/test_data_validation.py -v
+```
+
+En macOS / Linux:
+
+```bash
+.venv-validation/bin/python -m pytest tests/test_data_validation.py -v
+```
+
+Con `make` en macOS / Linux, los equivalentes son `make validate-data`
+y `make test-validation`.
 
 Resultado local: 16 pruebas aprobadas. Incluyen errores deliberados de
 integridad, cambios de distribución y comprobaciones de selección temporal
