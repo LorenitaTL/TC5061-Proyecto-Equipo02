@@ -18,6 +18,8 @@ mlflow.db
 
 # Credentials
 .env.*
+# The template has no secrets and must be committed
+!.env.example
 *.pem
 *.key
 
