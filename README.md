@@ -1081,7 +1081,82 @@ python -m pytest tests/test_features_p2.py -v
 
 Responsable: [@clsrivas](https://github.com/clsrivas).
 
-_Pendiente._
+Hay tres chequeos: bandit revisa el código, pip-audit las dependencias y gitleaks los
+secretos. Los tres corren solos en los hooks o en CI, y también se pueden correr a mano:
+
+| Chequeo | Qué revisa | Comando local | Dónde corre solo |
+| :--- | :--- | :--- | :--- |
+| bandit | Patrones inseguros en `mi_bici/` (subprocess, URLs, deserialización, etc.) | `make security-code` | Hook de pre-commit y job `pre-commit` de CI |
+| pip-audit | Vulnerabilidades conocidas en `requirements.txt` y `requirements-validation.txt` | `make security-deps` | Job `security` de CI, en cada PR y cada lunes |
+| gitleaks | Secretos en los cambios y en todo el historial | `gitleaks git -v --redact` | Hook de pre-commit y job `gitleaks` de CI |
+
+`make -k security` corre bandit y pip-audit juntos y muestra los dos reportes aunque uno falle.
+
+#### bandit
+
+La configuración está en `[tool.bandit]` de `pyproject.toml`, que excluye `tests/` y
+`.venv`. El análisis da 0 hallazgos: los de severidad baja se corrigieron o se aceptaron
+con su justificación.
+
+Correcciones:
+
+- `dataset.py` solo descarga URLs `https` del dominio de MiBici (`validate_source_url`), y
+  curl se llama con `--proto =https --proto-redir =https` para que una redirección no cambie
+  de protocolo.
+- `curl` y `git` se ejecutan con su ruta absoluta (`shutil.which`), no por nombre.
+
+Hallazgos aceptados, cada uno con `# nosec <regla>` y su razón en el código:
+
+| Archivo | Regla | Por qué se acepta |
+| :--- | :--- | :--- |
+| `mi_bici/dataset.py` | B404 | `subprocess` solo ejecuta curl, con ruta absoluta y sin shell. |
+| `mi_bici/dataset.py` | B603 (×2) | Lista de argumentos sin shell; la URL es la del portal o ya pasó por `validate_source_url`. |
+| `mi_bici/modeling/tracking.py` | B404 | `subprocess` solo ejecuta git, con ruta absoluta y sin shell. |
+| `mi_bici/modeling/tracking.py` | B603 | `git rev-parse HEAD` con argumentos fijos, sin entrada externa. |
+
+Para aceptar un hallazgo nuevo, agrega `# nosec <regla>` en esa línea con la razón y explícalo
+en el PR. No uses `# nosec` sin regla, porque oculta cualquier hallazgo futuro en esa línea.
+
+![Resultado de bandit](reports/figures/evidencia/seguridad_bandit.png)
+
+#### pip-audit
+
+`make security-deps` audita los dos archivos por separado, porque fijan versiones distintas.
+Ninguno tiene vulnerabilidades pendientes:
+
+- `requirements.txt`: limpio. La CVE-2026-53995 de mlflow se corrigió subiendo a 3.17.2.
+- `requirements-validation.txt`: limpio, con dos vulnerabilidades de `setuptools` 80.10.2
+  aceptadas (PYSEC-2026-3447 y GHSA-xmj3-9gf7-h52w). pip-audit reporta "3 ignored" porque
+  lista PYSEC-2026-3447 dos veces. No se puede subir setuptools porque DeepChecks 0.19.1
+  necesita `pkg_resources`, que se eliminó en setuptools 81. El riesgo es bajo: ese entorno
+  solo valida datos (`make validate-data`), no entrena ni sirve modelos. Los
+  `--ignore-vuln` están en `VALIDATION_IGNORED_VULNS` del `Makefile` y deben quitarse cuando
+  DeepChecks funcione sin `pkg_resources`.
+
+pip-audit también avisa que no puede auditar `mi-bici`: es el paquete del propio proyecto y no
+está en PyPI.
+
+![Resultado de pip-audit](reports/figures/evidencia/seguridad_pip_audit.png)
+
+#### Secretos
+
+`gitleaks git -v --redact` revisó los 144 commits del historial sin encontrar secretos. Qué
+hacer si reporta algo está en [Secret scanning](#secret-scanning).
+
+![Resultado de gitleaks sobre el historial](reports/figures/evidencia/seguridad_gitleaks.png)
+
+#### Prácticas
+
+- **`.gitignore`:** excluye `.env` y `.env.*` (con excepción de `.env.example`), `*.pem` y
+  `*.key`, además de los datos, los modelos serializados y la base de MLflow.
+- **`.env.example`:** plantilla versionada con todas las variables que lee el código, sin
+  valores reales. Cada desarrollador la copia a `.env`, que no se sube (ver
+  [Opción A: archivo `.env`](#opción-a-archivo-env-recomendada)).
+- **`load_dotenv`:** `mi_bici/config.py` carga `.env` al importarse y lee las variables con
+  `os.getenv`, con un valor por defecto seguro. Nada sensible queda escrito en el código.
+- **Hooks:** `detect-private-key` y `gitleaks` bloquean llaves y secretos antes del commit,
+  y `bandit` revisa el código de `mi_bici/`. Los mismos chequeos corren en CI, así que un
+  `git commit --no-verify` no evita que el PR falle.
 
 ### Cobertura
 
