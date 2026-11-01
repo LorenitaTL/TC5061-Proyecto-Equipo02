@@ -90,6 +90,9 @@ On every `git commit`, the hooks in `.pre-commit-config.yaml` run on the staged 
   Python of the active environment, so activate `.venv` before committing.
 - `gitleaks` blocks the commit if the staged changes contain a secret (API keys, tokens,
   passwords, connection strings). pre-commit downloads it on first use; nothing to install.
+- `bandit` checks the staged files under `mi_bici/` for security issues, with the config in
+  `pyproject.toml` (`make security-code` runs the same check on the whole package). To
+  accept a finding, add `# nosec <rule>` with the reason on that line.
 
 If a hook modifies files, the commit is aborted. Review the changes, `git add` them, and
 commit again. To run the hooks on the whole repo:
