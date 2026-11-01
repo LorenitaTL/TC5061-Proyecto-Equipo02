@@ -66,6 +66,18 @@ def test_metrics_without_positive_predictions() -> None:
     assert metrics["recall"] == 0.0
 
 
+def test_metrics_with_all_positive_predictions() -> None:
+    """Si todo supera el umbral, recall vale 1 y precision es la proporción de riesgo real."""
+    df = make_df([0.6, 0.7, 0.8, 0.9], [0.9, 0.9, 0.0, 0.0])
+    assert persistence_prediction(df, THRESHOLD).tolist() == [1, 1, 1, 1]
+
+    metrics = persistence_metrics(df, THRESHOLD)
+    assert metrics["recall"] == 1.0
+    assert metrics["precision"] == pytest.approx(0.5)
+    assert metrics["accuracy"] == pytest.approx(0.5)
+    assert metrics["f1"] == pytest.approx(2 / 3)
+
+
 def test_metrics_keys_and_types() -> None:
     """Devuelve las cinco métricas que main() registra en MLflow, como float."""
     metrics = persistence_metrics(make_df([0.9, 0.1], [0.9, 0.1]), THRESHOLD)
