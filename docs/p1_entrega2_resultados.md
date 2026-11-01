@@ -121,19 +121,27 @@ En PowerShell:
 $env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 
 # Baseline
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=seasonal
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p1 -P model=seasonal
 
 # Candidata A
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=histgb -P sample_size=1000000 -P max_iter=100 -P learning_rate=0.1 -P max_leaf_nodes=31 -P l2_regularization=1.0
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p1 -P model=histgb -P sample_size=1000000 -P max_iter=100 `
+  -P learning_rate=0.1 -P max_leaf_nodes=31 -P l2_regularization=1.0
 
 # Candidata B
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=histgb -P sample_size=1000000 -P max_iter=200 -P learning_rate=0.05 -P max_leaf_nodes=31 -P l2_regularization=1.0
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p1 -P model=histgb -P sample_size=1000000 -P max_iter=200 `
+  -P learning_rate=0.05 -P max_leaf_nodes=31 -P l2_regularization=1.0
 
 # Candidata C
-mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local -P question=p1 -P model=histgb -P sample_size=1000000 -P max_iter=100 -P learning_rate=0.1 -P max_leaf_nodes=15 -P l2_regularization=1.0
+mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local `
+  -P question=p1 -P model=histgb -P sample_size=1000000 -P max_iter=100 `
+  -P learning_rate=0.1 -P max_leaf_nodes=15 -P l2_regularization=1.0
 
 # Evaluación final del ganador de estas ejecuciones
-python -m mi_bici.modeling.evaluate_p1 --model-uri "runs:/6338e74554154891ae7b4a59ba479f57/modelo_p1"
+python -m mi_bici.modeling.evaluate_p1 `
+  --model-uri "runs:/6338e74554154891ae7b4a59ba479f57/modelo_p1"
 ```
 
 En una reproducción, sustituir el Run ID de evaluación por el del
@@ -179,7 +187,9 @@ queda a cargo de Claudio. Los IDs y números de versión pueden cambiar.
 Para registrar el ganador, documentar su linaje y verificar `champion`:
 
 ```powershell
-python -m mi_bici.modeling.register_p1 --run-id 6338e74554154891ae7b4a59ba479f57 --evaluation-run-id 3806d997bd124bfea4f03910cc03f487
+python -m mi_bici.modeling.register_p1 `
+  --run-id 6338e74554154891ae7b4a59ba479f57 `
+  --evaluation-run-id 3806d997bd124bfea4f03910cc03f487
 ```
 
 El script reutiliza una versión existente del mismo entrenamiento si ya está
@@ -196,7 +206,12 @@ Las horas pico, definidas exclusivamente con entrenamiento, fueron
 08:00, 17:00, 18:00 y 19:00.
 
 ```powershell
-python -m mi_bici.modeling.evaluate_peak_p1 --baseline-run-id 3f88171998734250935d7e5c8827dfbe --candidate-run-ids c2e1a7eb4e7a40a0b3aad28bf92d3152 6338e74554154891ae7b4a59ba479f57 7a4af041d67749b4bd54ee8b3c548f9d
+python -m mi_bici.modeling.evaluate_peak_p1 `
+  --baseline-run-id 3f88171998734250935d7e5c8827dfbe `
+  --candidate-run-ids `
+    c2e1a7eb4e7a40a0b3aad28bf92d3152 `
+    6338e74554154891ae7b4a59ba479f57 `
+    7a4af041d67749b4bd54ee8b3c548f9d
 ```
 
 El script recupera los modelos existentes sin reentrenarlos y añade métricas

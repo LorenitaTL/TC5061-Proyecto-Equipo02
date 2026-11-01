@@ -106,7 +106,8 @@ python -m mi_bici.modeling.train_p1
 Para evaluar un modelo previamente registrado:
 
 ```bash
-python -m mi_bici.modeling.evaluate_p1 --model-uri models:/IDENTIFICADOR_DEL_MODELO
+python -m mi_bici.modeling.evaluate_p1 \
+  --model-uri models:/IDENTIFICADOR_DEL_MODELO
 ```
 
 Para visualizar los experimentos:
