@@ -1,4 +1,6 @@
-site_name: mi-bici
-#
-site_author: Equipo2
-#
+site_name: MiBici — Equipo 02
+site_author: Equipo 02
+repo_url: https://github.com/LorenitaTL/TC5061-Proyecto-Equipo02
+nav:
+  - Inicio: index.md
+  - Primeros pasos: getting-started.md
