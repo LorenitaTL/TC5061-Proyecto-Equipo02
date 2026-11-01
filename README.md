@@ -962,6 +962,27 @@ advierte); no se fija en una prueba porque depende de la versión.
 
 ![Pruebas del baseline de P2](reports/figures/evidencia/pytest_p2_baseline.png)
 
+`tests/test_features_p2.py` prueba la construcción de la tabla estación-hora de
+`features_p2`, también con datos sintéticos:
+
+- `aggregate_station_flows`: las salidas se cuentan en la hora de inicio y las llegadas en
+  la de fin; un viaje redondo cuenta como salida y como llegada.
+- `create_station_hour_grid`: una fila por estación y hora; una estación sin viajes y una
+  hora sin flujo aparecen con flujo cero; el rango llega hasta la última llegada. Los viajes
+  de estaciones que no están en el catálogo se descartan.
+- `add_imbalance_features` y `add_temporal_features`: signo y magnitud del desbalance,
+  normalización por capacidad, calendario y codificación cíclica de la hora.
+- `add_historical_features`: la primera hora de cada estación no tiene historia; los
+  rezagos y las ventanas solo usan horas anteriores y no mezclan estaciones.
+- `add_next_hour_target`: el objetivo es la hora siguiente de la misma estación y la última
+  hora, que no tiene objetivo, se elimina.
+
+```bash
+python -m pytest tests/test_features_p2.py -v
+```
+
+![Pruebas de las features de P2](reports/figures/evidencia/pytest_p2_features.png)
+
 ### Seguridad
 
 Responsable: [@clsrivas](https://github.com/clsrivas).
