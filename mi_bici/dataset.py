@@ -5,9 +5,9 @@ import json
 from pathlib import Path
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404  # solo ejecuta curl con ruta absoluta y sin shell
 import sys
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from loguru import logger
 import pandas as pd
@@ -27,6 +27,10 @@ from mi_bici.config import (
 app = typer.Typer()
 
 PORTAL_URL = "https://mibici.net/es/datos-abiertos/"
+ALLOWED_SOURCE_HOST = urlparse(MIBICI_BASE_URL).hostname
+
+# Solo HTTPS, también en redirecciones: curl no sigue a http://, file:// ni ftp://.
+CURL_PROTOCOL_ARGS = ["--proto", "=https", "--proto-redir", "=https"]
 
 
 def get_curl_executable() -> str:
@@ -79,9 +83,11 @@ def discover_sources(
     dict[str, str]
         Diccionario con periodo y URL de descarga.
     """
-    response = subprocess.run(
+    # URL constante del portal y curl con ruta absoluta: el comando no tiene entrada externa.
+    response = subprocess.run(  # nosec B603
         [
             get_curl_executable(),
+            *CURL_PROTOCOL_ARGS,
             "--fail",
             "--location",
             "--silent",
@@ -143,6 +149,21 @@ def discover_sources(
     return dict(sorted(sources.items()))
 
 
+def validate_source_url(url: str) -> str:
+    """
+    Verifica que una URL de descarga sea HTTPS y apunte al portal de MiBici.
+
+    Los enlaces de los CSV se leen del HTML del portal, así que no se confía en ellos
+    antes de pasarlos a curl.
+    """
+    parsed = urlparse(url)
+
+    if parsed.scheme != "https" or parsed.hostname != ALLOWED_SOURCE_HOST:
+        raise ValueError(f"URL de descarga no permitida: {url}")
+
+    return url
+
+
 def download_file(url: str, destination: Path) -> Path:
     """
     Descarga un archivo desde una URL mediante curl.
@@ -171,10 +192,13 @@ def download_file(url: str, destination: Path) -> Path:
         logger.info(f"El archivo ya existe: {destination.name}")
         return destination
 
+    validate_source_url(url)
+
     temp_path = destination.with_suffix(destination.suffix + ".part")
 
     command = [
         get_curl_executable(),
+        *CURL_PROTOCOL_ARGS,
         "--fail",
         "--location",
         "--retry",
@@ -189,7 +213,8 @@ def download_file(url: str, destination: Path) -> Path:
     try:
         logger.info(f"Descargando: {destination.name}")
 
-        subprocess.run(command, check=True)
+        # La URL ya se validó (HTTPS y dominio de MiBici) y no se usa shell.
+        subprocess.run(command, check=True)  # nosec B603
 
         if not temp_path.exists() or temp_path.stat().st_size == 0:
             raise RuntimeError("El archivo descargado está vacío.")

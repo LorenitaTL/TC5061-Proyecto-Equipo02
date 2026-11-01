@@ -69,7 +69,7 @@ security: security-code security-deps
 ## Analyze the code with bandit
 .PHONY: security-code
 security-code:
-	bandit -r mi_bici
+	bandit -c pyproject.toml -r mi_bici
 
 ## Audit the dependencies with pip-audit (each file separately: their pins differ)
 .PHONY: security-deps
