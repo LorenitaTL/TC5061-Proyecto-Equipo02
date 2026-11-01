@@ -71,12 +71,18 @@ security: security-code security-deps
 security-code:
 	bandit -c pyproject.toml -r mi_bici
 
+# Accepted risk in the validation environment only: setuptools 80.10.2 has these two
+# vulnerabilities, but DeepChecks 0.19.1 needs pkg_resources, removed in setuptools 81.
+# That environment only validates data (make validate-data); it does not train or serve
+# models. Remove these ignores once DeepChecks works without pkg_resources.
+VALIDATION_IGNORED_VULNS = --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
+
 ## Audit the dependencies with pip-audit (each file separately: their pins differ)
 .PHONY: security-deps
 security-deps:
 	status=0; \
 	pip-audit -r requirements.txt || status=1; \
-	pip-audit -r requirements-validation.txt || status=1; \
+	pip-audit -r requirements-validation.txt $(VALIDATION_IGNORED_VULNS) || status=1; \
 	exit $$status
 
 
