@@ -14,14 +14,10 @@ from sklearn.metrics import (
 )
 import typer
 
-from mi_bici.config import (
-    RISK_PERCENTILE,
-    TEST_FRACTION,
-    TRAIN_FRACTION,
-    VALIDATION_FRACTION,
-)
+from mi_bici.config import RISK_PERCENTILE
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
+from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END
 from mi_bici.modeling.tracking import configure_mlflow, log_traceability
 from mi_bici.modeling.train_p2 import (
     create_risk_label,
@@ -82,9 +78,8 @@ def main(input_path: Path = DATASET_PATH) -> None:
                 "rule": "imbalance_ratio >= train_risk_threshold",
                 "risk_percentile": RISK_PERCENTILE,
                 "prediction_horizon": "1h",
-                "train_fraction": TRAIN_FRACTION,
-                "validation_fraction": VALIDATION_FRACTION,
-                "test_fraction": TEST_FRACTION,
+                "train_end": str(TRAIN_END),
+                "validation_end": str(VALIDATION_END),
                 "data_start": df["hour"].min().isoformat(),
                 "data_end": df["hour"].max().isoformat(),
                 "data_file": input_path.name,

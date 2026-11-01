@@ -66,12 +66,24 @@ P1_SAMPLE_SIZE = 1_000_000
 # Configuración del modelo P2
 # ---------------------------------------------------------
 
-# La semilla RANDOM_STATE se define en la sección "Reproducibility".
+# Fechas de corte (exclusivas) de la partición cronológica.
+P2_TRAIN_END = "2026-04-01"
+P2_VALIDATION_END = "2026-06-01"
+P2_FAMILY_SAMPLE_SIZE = 1_000_000
 
-# División temporal de los datos.
-TRAIN_FRACTION = 0.70
-VALIDATION_FRACTION = 0.15
-TEST_FRACTION = 0.15
+# ---------------------------------------------------------
+# Configuración del modelo P2 - HistGradientBoosting
+# ---------------------------------------------------------
+P2_MODEL_FAMILY = "HistGradientBoosting"
+
+P2_HGB_LEARNING_RATE = 0.10
+P2_HGB_MAX_ITER = 200
+P2_HGB_MAX_LEAF_NODES = 31
+P2_HGB_MIN_SAMPLES_LEAF = 20
+
+# Umbral de clasificación seleccionado sobre validation
+P2_CLASSIFICATION_THRESHOLD = 0.35
+
 
 # Percentil utilizado para definir el umbral de alto riesgo.
 RISK_PERCENTILE = 0.80

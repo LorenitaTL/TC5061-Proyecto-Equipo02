@@ -359,128 +359,224 @@ $$
 
 donde:
 
-- $D_{t+1}$ = número de salidas durante la siguiente hora;
-- $A_{t+1}$ = número de llegadas durante la siguiente hora;
+- $D_{t+1}$ = número de salidas durante la siguiente hora.
+- $A_{t+1}$ = número de llegadas durante la siguiente hora.
 - $C$ = capacidad de la estación.
 
-El umbral de clasificación se obtiene como el percentil 80 de la distribución del objetivo calculada **únicamente sobre el conjunto de entrenamiento**:
+El `target_imbalance_ratio` funciona como un **proxy relativo de riesgo operacional** y no como un umbral físico o de seguridad de una estación.
 
-`P80 = 0.066667`
+### Definición de la etiqueta de riesgo
 
-Por lo tanto, una observación pertenece a la clase positiva cuando el desbalance relativo de la siguiente hora supera este umbral. Este valor funciona como un **proxy relativo de riesgo operacional** y no como un umbral físico o de seguridad de una estación.
+El umbral de riesgo se calcula como el percentil 80 (**P80**) de `target_imbalance_ratio`, utilizando **únicamente TRAIN**:
+
+```text
+risk_threshold = 0.066667
+```
+
+La etiqueta se construye mediante una comparación estricta:
+
+```text
+Risk = 1 si target_imbalance_ratio > risk_threshold
+Risk = 0 en otro caso
+```
+
+Se utiliza `>` debido a que existen observaciones empatadas exactamente en el P80. Con `>=`, los empates habrían incrementado artificialmente la proporción de positivos de aproximadamente 19.40 % a 28.33 % en TRAIN.
+
+El mismo `risk_threshold` calculado sobre TRAIN se aplica sin recalcularlo a validation y test.
+
+Proporción de positivos:
+
+| Partición | Observaciones | Positivos |
+|---|---:|---:|
+| Train | 5,241,600 | 19.40 % |
+| Validation | 702,720 | 17.65 % |
+| Test | 345,600 | 17.31 % |
+
+### Split temporal
+
+La partición se realiza mediante límites temporales explícitos para evitar fuga de información y mantener un protocolo reproducible:
+
+| Partición | Periodo | Observaciones |
+|---|---|---:|
+| Train | 2025-01-01 → 2026-03-31 | 5,241,600 |
+| Validation | 2026-04-01 → 2026-05-31 | 702,720 |
+| Test | 2026-06-01 → 2026-06-30 | 345,600 |
+
+Los límites están centralizados en `mi_bici/config.py` y la lógica de partición se encuentra en `mi_bici/modeling/splits_p2.py`.
+
+La partición de test se reserva para la evaluación final y no se utiliza para seleccionar el modelo ni su threshold de clasificación.
 
 ### Características
 
 El modelo utiliza 30 características, agrupadas en:
 
-- actividad actual: salidas, llegadas y flujo neto;
-- desbalance y capacidad de la estación;
+- actividad actual: `departures`, `arrivals` y `net_flow`;
+- desbalance actual y capacidad;
 - ubicación de la estación;
-- variables temporales y variables cíclicas de hora y día;
+- variables temporales;
+- variables cíclicas de hora y día;
 - rezagos de 1, 2 y 24 horas;
 - ventanas móviles históricas de 3 y 24 horas.
 
-Las variables históricas utilizan únicamente información disponible hasta el instante `t`, evitando utilizar información futura para predecir `t+1`.
+El pipeline de modelado utiliza:
 
-### Partición temporal
+1. imputación mediante `SimpleImputer`;
+2. estandarización mediante `StandardScaler`;
+3. clasificador correspondiente a la familia evaluada.
 
-Se utiliza una partición cronológica para evitar fuga de información:
+La construcción del pipeline está centralizada en `build_pipeline(model)` para mantener el mismo preprocesamiento entre las diferentes familias de modelos.
 
-| Conjunto | Periodo | Observaciones |
-| --- | --- | ---: |
-| Train | 2025-01-01 00:00 → 2026-01-18 03:00 | 4,402,560 |
-| Validation | 2026-01-18 04:00 → 2026-04-10 01:00 | 943,680 |
-| Test | 2026-04-10 02:00 → 2026-06-30 23:00 | 943,680 |
+### Comparación de modelos
 
-En total se utilizan **6,289,920 observaciones estación-hora**.
+Se evaluaron tres familias de modelos sobre el mismo conjunto de características y utilizando la partición temporal definida para P2:
 
-El umbral P80 utilizado para definir la clase positiva se calcula exclusivamente con el conjunto de entrenamiento, evitando utilizar información de validación o prueba durante la definición del problema.
+- Logistic Regression
+- HistGradientBoosting
+- Random Forest
 
-### Pipeline y modelo
+La selección se realizó sobre **validation**. Para cada familia se evaluó un threshold de clasificación y se seleccionó el punto con mejor F1 entre los thresholds que alcanzaron una precisión mínima de 0.50.
 
-El pipeline de clasificación utiliza:
+| Modelo | Threshold | Precision | Recall | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| Logistic Regression | 0.70 | 0.5181 | 0.4395 | 0.4756 | 0.8334 |
+| HistGradientBoosting | 0.35 | 0.5158 | 0.6910 | 0.5907 | 0.8882 |
+| Random Forest | 0.55 | 0.5308 | 0.6145 | 0.5696 | 0.8813 |
 
-1. imputación de valores faltantes mediante la mediana;
-2. estandarización de características;
-3. Regresión Logística con `class_weight="balanced"`.
+HistGradientBoosting presentó el mejor equilibrio entre Recall, F1 y ROC-AUC en validation, por lo que fue seleccionado como la familia candidata de P2.
 
-La clasificación se realiza utilizando una probabilidad de decisión de `0.5`.
+### Búsqueda de hiperparámetros
 
-Las métricas utilizadas son **Recall, Precision, F1 y ROC-AUC**. Recall es especialmente relevante para identificar la mayor cantidad posible de estaciones con riesgo, mientras que Precision y F1 permiten evaluar el costo de las alertas adicionales. ROC-AUC se utiliza como medida complementaria del poder discriminativo del modelo.
+Sobre HistGradientBoosting se evaluaron diferentes combinaciones de:
 
-### Resultados
+- `learning_rate`
+- `max_iter`
+- `max_leaf_nodes`
+- `min_samples_leaf`
 
-La tabla corresponde al baseline con las 30 características. El modelo seleccionado en la
-Entrega 2 es la versión sin desbalance actual (ver [Ablaciones](#ablaciones)).
-
-Resultados del baseline sobre los tres conjuntos:
-
-| Conjunto | Recall | Precision | F1 | ROC-AUC |
-| --- | ---: | ---: | ---: | ---: |
-| Train | 0.7505 | 0.5804 | 0.6546 | 0.8465 |
-| Validation | 0.7391 | 0.5597 | 0.6370 | 0.8410 |
-| Test | 0.7283 | 0.5524 | 0.6283 | 0.8364 |
-
-El run se registra en el experimento `mibici-equipo02`, compartido por P1, P2 y P3. Se identifica con las etiquetas `team=equipo02`, `question=P2` y `git_commit`.
-
-Los identificadores de los runs dependen de cada ejecución local, por lo que pueden variar entre integrantes.
-
-El entrenamiento puede reproducirse desde la raíz del repositorio mediante:
-
-```bash
-python -m mi_bici.modeling.train_p2
-```
-
-Los artefactos generados localmente incluyen:
+La configuración seleccionada fue:
 
 ```text
-models/p2_risk_model.joblib
-models/p2_metrics.csv
-models/p2_threshold.txt
+learning_rate = 0.10
+max_iter = 200
+max_leaf_nodes = 31
+min_samples_leaf = 20
+classification_threshold = 0.35
 ```
 
-Estos archivos están excluidos del control de versiones mediante `.gitignore`. El modelo y sus resultados experimentales se registran en MLflow.
+Con esta configuración, los resultados finales sobre validation fueron:
 
-### Ablaciones
+| Métrica | Validation |
+|---|---:|
+| Accuracy | 0.8313 |
+| Precision | 0.5165 |
+| Recall | 0.6941 |
+| F1 | 0.5923 |
+| ROC-AUC | 0.8893 |
 
-Se realizaron pruebas de eliminación de grupos de variables para evaluar la contribución de la información de desbalance y actividad actual:
+### Resultados finales
 
-| Modelo | Variables | Recall | Precision | F1 | ROC-AUC |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Baseline | 30 | 0.7283 | 0.5524 | 0.6283 | 0.8364 |
-| Sin desbalance actual | 28 | 0.7313 | 0.5397 | 0.6210 | 0.8330 |
-| Sin flujo actual | 25 | 0.7290 | 0.5267 | 0.6116 | 0.8249 |
+El modelo final seleccionado es **HistGradientBoosting**, con el pipeline de preprocesamiento común y el threshold de clasificación `0.35`.
 
-En la Entrega 2 la selección se hizo solo con validación y con Recall como métrica principal.
-La versión **sin desbalance actual** (28 variables, `class_weight="balanced"`) obtuvo el mayor
-Recall de validación (0.7417 frente a 0.7391 del baseline), a cambio de una ligera baja en
-Precision, F1 y ROC-AUC, por lo que es el modelo seleccionado de P2. Está registrado como
-`mibici-equipo02-p2-riesgo` con el alias `champion`. La comparación completa, la búsqueda con
-nested runs y la justificación están en
-[Resultados de P2 en la Entrega 2](docs/p2_entrega2_resultados.md).
+| Partición | Accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|---:|
+| Train | 0.8296 | 0.5463 | 0.7170 | 0.6201 | 0.8933 |
+| Validation | 0.8313 | 0.5165 | 0.6941 | 0.5923 | 0.8893 |
+| Test | 0.8219 | 0.4898 | 0.6871 | 0.5719 | 0.8786 |
 
-Las variables que quita cada ablación están definidas en `ABLATIONS`, en `mi_bici/modeling/train_p2.py`:
+La diferencia entre validation y test es consistente con una evaluación sobre un periodo temporal posterior y no indica una caída abrupta del desempeño.
 
-- **Sin desbalance actual:** `absolute_imbalance` e `imbalance_ratio`.
-- **Sin flujo actual:** además `departures`, `arrivals` y `net_flow`.
+### Baseline de persistencia
 
-Para reproducir la tabla, cada versión registra su propio run de MLflow (`P2-logistic-regression-baseline`, `P2-logistic-regression-sin-desbalance-actual` y `P2-logistic-regression-sin-flujo-actual`):
+Como referencia adicional se implementó un baseline de persistencia, que utiliza el riesgo observado previamente para producir la predicción.
 
-```bash
-python -m mi_bici.modeling.train_p2 --ablation todas
+Resultados:
+
+| Partición | Precision | Recall | F1 | ROC-AUC |
+|---|---:|---:|---:|---:|
+| Validation | 0.3732 | 0.5664 | 0.4500 | 0.7288 |
+| Test | 0.3612 | 0.5537 | 0.4372 | 0.7218 |
+
+HistGradientBoosting supera al baseline de persistencia en las principales métricas de clasificación, especialmente Recall, F1 y ROC-AUC.
+
+### MLflow y trazabilidad
+
+P2 utiliza el experimento:
+
+```text
+P2-operational-risk
 ```
 
-Con `--ablation sin_desbalance_actual` o `--ablation sin_flujo_actual` se entrena solo una. Las ablaciones se registran únicamente en MLflow: los archivos locales de `models/` siempre corresponden al baseline, y el modelo seleccionado se obtiene del Model Registry (`models:/mibici-equipo02-p2-riesgo@champion`).
+Los runs registran información de trazabilidad incluyendo:
+
+- pregunta (`P2`);
+- familia de modelo;
+- etapa del experimento;
+- commit de Git;
+- versión de datos;
+- fechas de partición;
+- percentil de riesgo;
+- semilla aleatoria;
+- unidad de análisis;
+- parámetros del modelo;
+- métricas de train, validation y test.
+
+El modelo seleccionado fue registrado en el Model Registry:
+
+```text
+mibici-equipo02-p2-riesgo
+```
+
+con el alias:
+
+```text
+champion
+```
+
+La versión registrada corresponde a la candidata final de HistGradientBoosting.
 
 ### Reproducibilidad de P2
 
-Para reproducir el entrenamiento de P2 desde la raíz del repositorio:
+Para ejecutar el entrenamiento P2 desde la raíz del repositorio:
 
 ```bash
-python -m mi_bici.modeling.train_p2
+python -m mi_bici.modeling.train --question p2 --model default
 ```
 
-El script realiza la carga de las características procesadas, genera la partición temporal, calcula el umbral P80 a partir del conjunto de entrenamiento, entrena el pipeline de clasificación, evalúa el modelo en train, validation y test, y registra el experimento y sus artefactos en MLflow.
+El flujo:
+
+1. carga `features_p2.parquet`;
+2. realiza el split temporal;
+3. calcula el P80 exclusivamente sobre TRAIN;
+4. genera las etiquetas de riesgo;
+5. construye el pipeline;
+6. entrena la familia de modelo configurada;
+7. evalúa train, validation y test;
+8. registra parámetros, métricas y artefactos en MLflow.
+
+La familia de modelo por defecto se controla mediante `P2_MODEL_FAMILY` en `mi_bici/config.py`.
+
+Para ejecutar una familia específica:
+
+```bash
+python -m mi_bici.modeling.train --question p2 --model logistic_regression
+python -m mi_bici.modeling.train --question p2 --model hist_gradient_boosting
+python -m mi_bici.modeling.train --question p2 --model random_forest
+```
+
+La comparación de familias y la búsqueda de hiperparámetros se realizan utilizando validation; test se reserva para la evaluación final de la candidata seleccionada.
+
+### Pruebas
+
+El proyecto cuenta con pruebas automatizadas para validar el comportamiento del split temporal, la construcción de la etiqueta de riesgo, la evaluación del modelo, la configuración de las familias y la integración del entrenamiento P2.
+
+La suite completa se ejecutó satisfactoriamente:
+
+```text
+102 passed, 1 warning
+```
+
+El único warning corresponde a una deprecación proveniente de SQLAlchemy/MLflow y no a una falla de las pruebas de P2.
+
 
 ## P3 — Grupos de estaciones por perfil de uso
 
@@ -820,9 +916,9 @@ mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
   -P question=p1 -P model=histgb -P max_iter=200 -P learning_rate=0.05
 
 # P2: búsqueda con nested runs; la hija seleccionada es
-# P2-search-C-1.0-weight-balanced-ablation-sin_desbalance_actual
+# P2: HistGradientBoosting, modelo candidato/final seleccionado
 mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
-  -P question=p2 -P model=search
+  -P question=p2 -P model=hist_gradient_boosting
 
 # P3: K-Means sobre perfiles de uso, k = 3
 mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
@@ -830,9 +926,9 @@ mlflow run . -e train --experiment-name mibici-equipo02 --env-manager local \
 ```
 
 - Sin hiperparámetros, `-P question=p1` entrena la candidata A, no la seleccionada.
-- En P2, `-P ablation=sin_desbalance_actual` (sin `model=search`) reproduce las mismas métricas
-  en una corrida suelta, pero guarda el modelo como `p2_risk_model` y `register_p2` no lo
-  acepta: para registrar se usa la hija de la búsqueda.
+- En P2, `-P model=hist_gradient_boosting` reproduce la familia seleccionada con la
+  configuración definida en `mi_bici/config.py`. El modelo registrado como `champion`
+  corresponde a la candidata final de HistGradientBoosting.
 - En P3, `-P model=kmeans_perfil` es obligatorio aunque sea el valor por defecto: con
   `model=default`, la corrida falla al registrar el parámetro `model`.
 - La ingesta regenera `references/data_manifest.json`. No hagas commit de ese cambio; descártalo
@@ -852,8 +948,8 @@ python -m mi_bici.modeling.evaluate_p1 --model-uri "runs:/<RUN_ID_P1>/modelo_p1"
 python -m mi_bici.modeling.register_p1 --run-id <RUN_ID_P1> \
   --evaluation-run-id <RUN_ID_DE_evaluacion_final_p1_v2>
 
-# P2: la hija P2-search-C-1.0-weight-balanced-ablation-sin_desbalance_actual
-python -m mi_bici.modeling.register_p2 --run-id <RUN_ID_HIJA_P2>
+# P2: registrar la candidata final de HistGradientBoosting
+python -m mi_bici.modeling.register_p2 --run-id <RUN_ID_P2_HISTGRADIENTBOOSTING>
 
 # P3: el run p3-kmeans-perfil-k3
 python -m mi_bici.modeling.register_p3 --run-id <RUN_ID_P3>
@@ -880,9 +976,7 @@ from mlflow import MlflowClient
 MlflowClient().set_registered_model_alias("<modelo>", "champion", "<versión>")
 ```
 
-Limitación conocida: en las hijas de la búsqueda de P2, `git_commit` está fijo en el código
-(`32fb353`) y `register_p2` lee `data_version` de una etiqueta que la búsqueda no registra, así
-que el linaje de P2 en el Registry muestra ese commit y deja `data_version` vacío.
+
 
 ## Pruebas y chequeos
 
