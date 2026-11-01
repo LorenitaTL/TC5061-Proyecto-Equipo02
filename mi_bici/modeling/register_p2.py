@@ -49,6 +49,7 @@ def lineage_from_run(run) -> dict[str, str]:
         "unit_of_analysis": tags.get("unit_of_analysis", ""),
     }
 
+
 def validate_source(run) -> None:
     """Exige que el run sea una corrida candidata de P2 terminada."""
 

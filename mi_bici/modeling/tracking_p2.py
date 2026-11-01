@@ -2,7 +2,6 @@
 
 import mlflow
 
-
 from mi_bici.config import (
     DATA_END_MONTH,
     DATA_START_MONTH,
@@ -11,7 +10,6 @@ from mi_bici.config import (
     RANDOM_STATE,
     RISK_PERCENTILE,
 )
-
 from mi_bici.modeling.tracking import log_traceability
 
 
@@ -26,8 +24,6 @@ def log_p2_traceability(
         model_family=model_family,
         stage_of_work=stage_of_work,
     )
-
-
 
     mlflow.log_params(
         {

@@ -123,6 +123,7 @@ def test_create_risk_label_returns_binary_labels() -> None:
 
 def test_evaluate_model_returns_expected_metrics() -> None:
     """evaluate_model calcula las métricas principales del clasificador."""
+
     class DummyModel:
         def predict(self, X):
             return np.array([0, 1, 1, 0])

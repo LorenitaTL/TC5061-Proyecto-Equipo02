@@ -15,9 +15,9 @@ from sklearn.metrics import (
 import typer
 
 from mi_bici.config import RISK_PERCENTILE
-from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
+from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END
 from mi_bici.modeling.tracking import configure_mlflow, log_traceability
 from mi_bici.modeling.train_p2 import (
     create_risk_label,

@@ -33,6 +33,7 @@ from mlflow.models import infer_signature
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -47,28 +48,27 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import typer
-from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+
 from mi_bici.config import (
     IMPUTER_STRATEGY,
     LOGISTIC_CLASS_WEIGHT,
     LOGISTIC_MAX_ITER,
     LOGISTIC_SOLVER,
     P2_CLASSIFICATION_THRESHOLD,
+    P2_FAMILY_SAMPLE_SIZE,
     P2_HGB_LEARNING_RATE,
     P2_HGB_MAX_ITER,
     P2_HGB_MAX_LEAF_NODES,
     P2_HGB_MIN_SAMPLES_LEAF,
     P2_MODEL_FAMILY,
-    P2_FAMILY_SAMPLE_SIZE,
     PROJ_ROOT,
     RANDOM_STATE,
     RISK_PERCENTILE,
 )
-from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END, temporal_masks
-
 from mi_bici.data_tracking import log_training_data
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
+from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END, temporal_masks
 from mi_bici.modeling.tracking import configure_mlflow
 from mi_bici.modeling.tracking_p2 import log_p2_traceability
 
@@ -174,6 +174,7 @@ def ablation_run_name(
 
     return f"P2-{family_name}-{ablation.replace('_', '-')}"
 
+
 # ---------------------------------------------------------
 # Carga de datos
 # ---------------------------------------------------------
@@ -223,6 +224,7 @@ def load_features(
 # División temporal
 # ---------------------------------------------------------
 
+
 def temporal_split(
     df: pd.DataFrame,
 ) -> tuple[
@@ -239,8 +241,7 @@ def temporal_split(
     test = df[masks["test"]].copy()
 
     logger.info(
-        f"Train: {len(train):,} observaciones "
-        f"({train['hour'].min()} → {train['hour'].max()})"
+        f"Train: {len(train):,} observaciones ({train['hour'].min()} → {train['hour'].max()})"
     )
 
     logger.info(
@@ -248,12 +249,10 @@ def temporal_split(
         f"({validation['hour'].min()} → {validation['hour'].max()})"
     )
 
-    logger.info(
-        f"Test: {len(test):,} observaciones "
-        f"({test['hour'].min()} → {test['hour'].max()})"
-    )
+    logger.info(f"Test: {len(test):,} observaciones ({test['hour'].min()} → {test['hour'].max()})")
 
     return train, validation, test
+
 
 # ---------------------------------------------------------
 # Creación de la etiqueta
@@ -361,7 +360,6 @@ def evaluate_model(
     return metrics
 
 
-
 def build_pipeline(model):
     """
     Construye el pipeline de preprocesamiento y clasificación para P2.
@@ -448,14 +446,14 @@ def get_family_models() -> dict[str, object]:
         ),
     }
 
+
 def get_classifier(model_family: str):
     """Devuelve el clasificador correspondiente a una familia de modelos."""
     models = get_family_models()
 
     if model_family not in models:
         raise ValueError(
-            f"Familia de modelo desconocida: {model_family}. "
-            f"Opciones: {list(models)}"
+            f"Familia de modelo desconocida: {model_family}. Opciones: {list(models)}"
         )
 
     return models[model_family]
@@ -504,10 +502,7 @@ def compare_model_families(
                 "threshold": selected["threshold"],
                 "accuracy": accuracy_score(
                     y_validation,
-                    (
-                        model.predict_proba(X_validation)[:, 1]
-                        >= selected["threshold"]
-                    ).astype(int),
+                    (model.predict_proba(X_validation)[:, 1] >= selected["threshold"]).astype(int),
                 ),
                 "precision": selected["precision"],
                 "recall": selected["recall"],
@@ -596,6 +591,7 @@ def evaluate_thresholds(
 
     return pd.DataFrame(results)
 
+
 def select_threshold(
     threshold_results: pd.DataFrame,
     min_precision: float = 0.50,
@@ -603,19 +599,16 @@ def select_threshold(
     """
     Selecciona el threshold con mayor F1 sujeto a una precisión mínima.
     """
-    candidates = threshold_results[
-        threshold_results["precision"] >= min_precision
-    ]
+    candidates = threshold_results[threshold_results["precision"] >= min_precision]
 
     if candidates.empty:
-        raise ValueError(
-            f"No hay thresholds con precision >= {min_precision:.2f}"
-        )
+        raise ValueError(f"No hay thresholds con precision >= {min_precision:.2f}")
 
     return candidates.sort_values(
         by=["f1", "recall"],
         ascending=[False, False],
     ).iloc[0]
+
 
 def search_hgb_hyperparameters(
     train: pd.DataFrame,
@@ -640,9 +633,7 @@ def search_hgb_hyperparameters(
     # ---------------------------------------------------------
     # Crear etiqueta Risk usando únicamente TRAIN
     # ---------------------------------------------------------
-    risk_threshold = train["target_imbalance_ratio"].quantile(
-        RISK_PERCENTILE
-    )
+    risk_threshold = train["target_imbalance_ratio"].quantile(RISK_PERCENTILE)
 
     train["Risk"] = create_risk_label(
         train,
@@ -654,18 +645,11 @@ def search_hgb_hyperparameters(
         risk_threshold,
     )
 
-    logger.info(
-        f"Risk threshold P{RISK_PERCENTILE:.0%}: "
-        f"{risk_threshold:.6f}"
-    )
+    logger.info(f"Risk threshold P{RISK_PERCENTILE:.0%}: {risk_threshold:.6f}")
 
-    logger.info(
-        f"TRAIN positivos: {train['Risk'].mean():.4%}"
-    )
+    logger.info(f"TRAIN positivos: {train['Risk'].mean():.4%}")
 
-    logger.info(
-        f"VALIDATION positivos: {validation['Risk'].mean():.4%}"
-    )
+    logger.info(f"VALIDATION positivos: {validation['Risk'].mean():.4%}")
 
     X_train = train[features]
     y_train = train["Risk"]
@@ -706,10 +690,7 @@ def search_hgb_hyperparameters(
     results = []
 
     for i, params in enumerate(param_grid, start=1):
-        logger.info(
-            f"HGB configuración {i}/{len(param_grid)}: "
-            f"{params}"
-        )
+        logger.info(f"HGB configuración {i}/{len(param_grid)}: {params}")
 
         classifier = HistGradientBoostingClassifier(
             **params,
@@ -734,13 +715,9 @@ def search_hgb_hyperparameters(
             min_precision=0.50,
         )
 
-        probabilities = model.predict_proba(
-            X_validation
-        )[:, 1]
+        probabilities = model.predict_proba(X_validation)[:, 1]
 
-        predictions = (
-            probabilities >= selected["threshold"]
-        ).astype(int)
+        predictions = (probabilities >= selected["threshold"]).astype(int)
 
         results.append(
             {
@@ -774,10 +751,7 @@ def search_hgb_hyperparameters(
         ascending=[False, False, False],
     )
 
-    logger.success(
-        "Mejor configuración HGB: "
-        f"{results_df.iloc[0].to_dict()}"
-    )
+    logger.success(f"Mejor configuración HGB: {results_df.iloc[0].to_dict()}")
 
     return results_df.reset_index(drop=True)
 
@@ -963,7 +937,7 @@ def run_hyperparameter_search(
                     name=f"p2_search_{ablation}_{class_weight_name}",
                     source=input_path.resolve().as_uri(),
                     target="Risk",
-                    )
+                )
 
                 model.fit(X_train, y_train)
 
@@ -1182,7 +1156,6 @@ def train_model(
         run_context = nullcontext(run)
 
     with run_context as run:
-
         # -------------------------------------------------
         # Tags de trazabilidad
         # -------------------------------------------------
@@ -1228,14 +1201,9 @@ def train_model(
         # 4. Umbral P80 calculado SOLO con train
         # -------------------------------------------------
 
-        risk_threshold = train[
-            "target_imbalance_ratio"
-        ].quantile(RISK_PERCENTILE)
+        risk_threshold = train["target_imbalance_ratio"].quantile(RISK_PERCENTILE)
 
-        logger.info(
-            "Umbral de riesgo P80 calculado sobre TRAIN: "
-            f"{risk_threshold:.6f}"
-        )
+        logger.info(f"Umbral de riesgo P80 calculado sobre TRAIN: {risk_threshold:.6f}")
 
         train["Risk"] = create_risk_label(
             train,
@@ -1252,18 +1220,11 @@ def train_model(
             risk_threshold,
         )
 
-        logger.info(
-            f"TRAIN positive rate: {train['Risk'].mean():.4%}"
-        )
+        logger.info(f"TRAIN positive rate: {train['Risk'].mean():.4%}")
 
-        logger.info(
-            f"VALIDATION positive rate: "
-            f"{validation['Risk'].mean():.4%}"
-        )
+        logger.info(f"VALIDATION positive rate: {validation['Risk'].mean():.4%}")
 
-        logger.info(
-            f"TEST positive rate: {test['Risk'].mean():.4%}"
-        )
+        logger.info(f"TEST positive rate: {test['Risk'].mean():.4%}")
 
         log_training_data(
             train[features + ["Risk"]],
@@ -1282,36 +1243,26 @@ def train_model(
                 "model_family": model_family,
                 "classification_threshold": classification_threshold,
                 "random_state": RANDOM_STATE,
-
                 # HistGradientBoosting
                 "learning_rate": P2_HGB_LEARNING_RATE,
                 "max_iter": P2_HGB_MAX_ITER,
                 "max_leaf_nodes": P2_HGB_MAX_LEAF_NODES,
                 "min_samples_leaf": P2_HGB_MIN_SAMPLES_LEAF,
-
                 # Preprocesamiento
                 "imputer_strategy": IMPUTER_STRATEGY,
                 "scaler": "StandardScaler",
-
                 # Definición del problema
                 "risk_percentile": RISK_PERCENTILE,
                 "risk_threshold": float(risk_threshold),
                 "prediction_horizon": "1h",
-
                 # División temporal
                 "train_end": TRAIN_END.strftime("%Y-%m-%d"),
-                "validation_end": VALIDATION_END.strftime(
-                    "%Y-%m-%d"
-                ),
-
+                "validation_end": VALIDATION_END.strftime("%Y-%m-%d"),
                 # Características
                 "ablation": ablation,
-                "removed_features": ",".join(
-                    ABLATIONS[ablation]
-                ) or "ninguna",
+                "removed_features": ",".join(ABLATIONS[ablation]) or "ninguna",
                 "n_features": len(features),
                 "features": ",".join(features),
-
                 # Datos
                 "data_start": data_start,
                 "data_end": data_end,
@@ -1331,12 +1282,8 @@ def train_model(
                 "test_observations": float(len(test)),
                 "train_risk_threshold": float(risk_threshold),
                 "train_risk_rate": float(train["Risk"].mean()),
-                "validation_risk_rate": float(
-                    validation["Risk"].mean()
-                ),
-                "test_risk_rate": float(
-                    test["Risk"].mean()
-                ),
+                "validation_risk_rate": float(validation["Risk"].mean()),
+                "test_risk_rate": float(test["Risk"].mean()),
             }
         )
 
@@ -1357,15 +1304,11 @@ def train_model(
         # 8. Definir modelo
         # -------------------------------------------------
 
-
-
         classifier = get_classifier(model_family)
 
         model = build_pipeline(classifier)
 
-        logger.info(
-            f"Entrenando {model_family}..."
-        )
+        logger.info(f"Entrenando {model_family}...")
 
         model.fit(
             X_train,
@@ -1386,9 +1329,7 @@ def train_model(
 
             probabilities = model.predict_proba(X)[:, 1]
 
-            predictions = (
-                probabilities >= classification_threshold
-            ).astype(int)
+            predictions = (probabilities >= classification_threshold).astype(int)
 
             metrics = {
                 "accuracy": accuracy_score(
@@ -1486,30 +1427,24 @@ def train_model(
 
         test_predictions = test_metrics["predictions"]
 
-        confusion_matrix_display = (
-            ConfusionMatrixDisplay.from_predictions(
-                y_test,
-                test_predictions,
-                display_labels=[
-                    "Riesgo normal",
-                    "Alto riesgo",
-                ],
-                values_format="d",
-            )
+        confusion_matrix_display = ConfusionMatrixDisplay.from_predictions(
+            y_test,
+            test_predictions,
+            display_labels=[
+                "Riesgo normal",
+                "Alto riesgo",
+            ],
+            values_format="d",
         )
 
-        confusion_matrix_display.ax_.set_title(
-            "P2 - Matriz de confusión en TEST"
-        )
+        confusion_matrix_display.ax_.set_title("P2 - Matriz de confusión en TEST")
 
         mlflow.log_figure(
             confusion_matrix_display.figure_,
             "plots/confusion_matrix_test.png",
         )
 
-        plt.close(
-            confusion_matrix_display.figure_
-        )
+        plt.close(confusion_matrix_display.figure_)
 
         # -------------------------------------------------
         # 9.3 Curva Precision-Recall para P2
@@ -1517,11 +1452,9 @@ def train_model(
 
         test_probabilities = test_metrics["probabilities"]
 
-        precision_values, recall_values, _ = (
-            precision_recall_curve(
-                y_test,
-                test_probabilities,
-            )
+        precision_values, recall_values, _ = precision_recall_curve(
+            y_test,
+            test_probabilities,
         )
 
         fig, ax = plt.subplots()
@@ -1531,9 +1464,7 @@ def train_model(
             precision_values,
         )
 
-        ax.set_title(
-            "P2 - Curva Precision-Recall en TEST"
-        )
+        ax.set_title("P2 - Curva Precision-Recall en TEST")
         ax.set_xlabel("Recall")
         ax.set_ylabel("Precision")
         ax.grid(True)
@@ -1591,9 +1522,7 @@ def train_model(
         # 11. Guardar archivos locales
         # -------------------------------------------------
 
-        classification_threshold_path = (
-            MODEL_DIR / "p2_classification_threshold.txt"
-        )
+        classification_threshold_path = MODEL_DIR / "p2_classification_threshold.txt"
 
         if ablation == "completo":
             MODEL_DIR.mkdir(
@@ -1644,11 +1573,7 @@ def train_model(
         # 12.1 Registrar manifiesto de datos
         # -------------------------------------------------
 
-        data_manifest_path = (
-            PROJ_ROOT
-            / "references"
-            / "data_manifest.json"
-        )
+        data_manifest_path = PROJ_ROOT / "references" / "data_manifest.json"
 
         if data_manifest_path.is_file():
             mlflow.log_artifact(
@@ -1656,10 +1581,7 @@ def train_model(
                 artifact_path="data",
             )
         else:
-            logger.warning(
-                "No se encontró el manifiesto de datos: "
-                f"{data_manifest_path}"
-            )
+            logger.warning(f"No se encontró el manifiesto de datos: {data_manifest_path}")
 
         # -------------------------------------------------
         # 12.2 Registrar configuración
@@ -1673,10 +1595,7 @@ def train_model(
                 artifact_path="config",
             )
         else:
-            logger.warning(
-                "No se encontró el archivo de configuración: "
-                f"{config_path}"
-            )
+            logger.warning(f"No se encontró el archivo de configuración: {config_path}")
 
         # -------------------------------------------------
         # 13. Registrar modelo en MLflow
@@ -1702,36 +1621,21 @@ def train_model(
         # 13.1 Finalizar
         # -------------------------------------------------
 
-        logger.success(
-            "Modelo registrado en MLflow."
-        )
+        logger.success("Modelo registrado en MLflow.")
 
-        logger.success(
-            f"MLflow Run ID: {run.info.run_id}"
-        )
+        logger.success(f"MLflow Run ID: {run.info.run_id}")
 
-        logger.success(
-            "Versión del archivo de features: "
-            f"{features_data_version[:12]}..."
-        )
+        logger.success(f"Versión del archivo de features: {features_data_version[:12]}...")
 
         if ablation == "completo":
-            logger.success(
-                f"Modelo local: {MODEL_PATH}"
-            )
+            logger.success(f"Modelo local: {MODEL_PATH}")
 
-            logger.success(
-                f"Métricas: {METRICS_PATH}"
-            )
+            logger.success(f"Métricas: {METRICS_PATH}")
 
-            logger.success(
-                f"Risk threshold: {THRESHOLD_PATH}"
-            )
+            logger.success(f"Risk threshold: {THRESHOLD_PATH}")
 
-            logger.success(
-                "Classification threshold: "
-                f"{classification_threshold_path}"
-            )
+            logger.success(f"Classification threshold: {classification_threshold_path}")
+
 
 def run(model: str, params: dict):
     """
@@ -1769,9 +1673,7 @@ def run(model: str, params: dict):
         selected_model_family = model_families[model]
     else:
         raise ValueError(
-            f"Modelo desconocido: {model}. "
-            f"Opciones: default, "
-            f"{', '.join(model_families)}, search"
+            f"Modelo desconocido: {model}. Opciones: default, {', '.join(model_families)}, search"
         )
 
     # -------------------------------------------------
@@ -1782,10 +1684,7 @@ def run(model: str, params: dict):
     elif ablation in ABLATIONS:
         ablations = [ablation]
     else:
-        raise ValueError(
-            f"Ablación desconocida: {ablation}. "
-            f"Opciones: {list(ABLATIONS)}"
-        )
+        raise ValueError(f"Ablación desconocida: {ablation}. Opciones: {list(ABLATIONS)}")
 
     run_ids = []
 
