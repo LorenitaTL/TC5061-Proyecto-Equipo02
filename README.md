@@ -1140,7 +1140,7 @@ está en PyPI.
 
 #### Secretos
 
-`gitleaks git -v --redact` revisó los 144 commits del historial sin encontrar secretos. Qué
+`gitleaks git -v --redact` revisó los 145 commits del historial sin encontrar secretos. Qué
 hacer si reporta algo está en [Secret scanning](#secret-scanning).
 
 ![Resultado de gitleaks sobre el historial](reports/figures/evidencia/seguridad_gitleaks.png)
