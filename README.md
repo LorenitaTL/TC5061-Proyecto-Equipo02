@@ -950,8 +950,8 @@ pequeños, sin leer archivos ni usar MLflow:
 - `persistence_prediction`: un desbalance igual al umbral se predice como riesgo; la
   predicción es 0/1, conserva el índice y solo usa la hora actual.
 - `persistence_metrics`: valores calculados a mano (TP=1, FP=2, FN=1, TN=3), persistencia
-  perfecta, ausencia de predicciones positivas y las cinco métricas que se registran en
-  MLflow.
+  perfecta, sin predicciones positivas, con todas las predicciones positivas y las cinco
+  métricas que se registran en MLflow.
 
 ```bash
 python -m pytest tests/test_baseline_p2.py -v
