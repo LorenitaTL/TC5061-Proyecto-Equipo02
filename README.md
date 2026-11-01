@@ -431,7 +431,7 @@ La construcción del pipeline está centralizada en `build_pipeline(model)` para
 
 ### Comparación de modelos
 
-Se evaluaron tres familias de modelos sobre el mismo conjunto de características y utilizando la partición temporal definida para P2:
+Se evaluaron tres familias de modelos candidatas sobre el mismo conjunto de características y utilizando la partición temporal definida para P2. Las tres se comparan contra el [baseline de persistencia](#baseline-de-persistencia), que no es un modelo entrenado:
 
 - Logistic Regression
 - HistGradientBoosting
@@ -441,11 +441,12 @@ La selección se realizó sobre **validation**. Para cada familia se evaluó un 
 
 | Modelo | Threshold | Precision | Recall | F1 | ROC-AUC |
 |---|---:|---:|---:|---:|---:|
+| Persistencia (baseline) | — | 0.4468 | 0.4469 | 0.4468 | 0.7288 |
 | Logistic Regression | 0.70 | 0.5181 | 0.4395 | 0.4756 | 0.8334 |
 | HistGradientBoosting | 0.35 | 0.5158 | 0.6910 | 0.5907 | 0.8882 |
 | Random Forest | 0.55 | 0.5308 | 0.6145 | 0.5696 | 0.8813 |
 
-HistGradientBoosting presentó el mejor equilibrio entre Recall, F1 y ROC-AUC en validation, por lo que fue seleccionado como la familia candidata de P2.
+HistGradientBoosting presentó el mejor equilibrio entre Recall, F1 y ROC-AUC en validation, por lo que fue seleccionado como la familia candidata de P2. Las tres familias superan al baseline en F1 y ROC-AUC; la regresión logística es una candidata más, no el baseline.
 
 ### Búsqueda de hiperparámetros
 
@@ -490,16 +491,40 @@ La diferencia entre validation y test es consistente con una evaluación sobre u
 
 ### Baseline de persistencia
 
-Como referencia adicional se implementó un baseline de persistencia, que utiliza el riesgo observado previamente para producir la predicción.
+El baseline oficial de P2 es una regla de persistencia: predice que la hora siguiente será de
+riesgo si el desbalance de la hora actual ya supera el umbral.
 
-Resultados:
+```text
+Predicción Risk = 1 si imbalance_ratio > risk_threshold
+```
 
-| Partición | Precision | Recall | F1 | ROC-AUC |
-|---|---:|---:|---:|---:|
-| Validation | 0.3732 | 0.5664 | 0.4500 | 0.7288 |
-| Test | 0.3612 | 0.5537 | 0.4372 | 0.7218 |
+Usa el mismo `risk_threshold` (P80 de train), la misma comparación estricta `>` que la
+etiqueta y la misma partición temporal que los modelos candidatos, así que sus métricas son
+directamente comparables. No entrena nada, así que cualquier modelo útil debe superarlo. El
+`imbalance_ratio` actual sirve como score para ROC-AUC.
 
-HistGradientBoosting supera al baseline de persistencia en las principales métricas de clasificación, especialmente Recall, F1 y ROC-AUC.
+Para reproducirlo:
+
+```bash
+python -m mi_bici.modeling.baseline_p2
+```
+
+El run `p2-baseline-persistencia-p80` se registra con `stage_of_work=baseline` y
+`model_family=persistence`, junto con las mismas fechas de corte, percentil y versión de datos
+que las candidatas.
+
+Comparación del modelo final contra el baseline:
+
+| Partición | Modelo | Precision | Recall | F1 | ROC-AUC |
+|---|---|---:|---:|---:|---:|
+| Validation | Persistencia (baseline) | 0.4468 | 0.4469 | 0.4468 | 0.7288 |
+| Validation | HistGradientBoosting | 0.5165 | 0.6941 | 0.5923 | 0.8893 |
+| Test | Persistencia (baseline) | 0.4391 | 0.4390 | 0.4391 | 0.7218 |
+| Test | HistGradientBoosting | 0.4898 | 0.6871 | 0.5719 | 0.8786 |
+
+En test, HistGradientBoosting mejora al baseline en Recall (+0.248), F1 (+0.133), ROC-AUC
+(+0.157) y Precision (+0.051). La mayor ganancia está en Recall: detecta 69 % de las horas de
+riesgo, contra 44 % de la regla de persistencia.
 
 ### MLflow y trazabilidad
 
@@ -539,9 +564,10 @@ La versión registrada corresponde a la candidata final de HistGradientBoosting.
 
 ### Reproducibilidad de P2
 
-Para ejecutar el entrenamiento P2 desde la raíz del repositorio:
+Para ejecutar el baseline y el entrenamiento P2 desde la raíz del repositorio:
 
 ```bash
+python -m mi_bici.modeling.baseline_p2
 python -m mi_bici.modeling.train --question p2 --model default
 ```
 
@@ -1044,8 +1070,9 @@ Responsables: [@clsrivas](https://github.com/clsrivas) y
 `tests/test_baseline_p2.py` prueba el baseline de persistencia con datos sintéticos
 pequeños, sin leer archivos ni usar MLflow:
 
-- `persistence_prediction`: un desbalance igual al umbral se predice como riesgo; la
-  predicción es 0/1, conserva el índice y solo usa la hora actual.
+- `persistence_prediction`: un desbalance igual al umbral no se predice como riesgo, igual
+  que en `create_risk_label`; la predicción es 0/1, conserva el índice y solo usa la hora
+  actual.
 - `persistence_metrics`: valores calculados a mano (TP=1, FP=2, FN=1, TN=3), persistencia
   perfecta, sin predicciones positivas, con todas las predicciones positivas y las cinco
   métricas que se registran en MLflow.
