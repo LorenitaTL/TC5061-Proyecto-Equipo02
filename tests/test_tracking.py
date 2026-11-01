@@ -4,7 +4,12 @@ import mlflow
 from mlflow import MlflowClient
 import pytest
 
-from mi_bici.modeling.tracking import log_run_config, log_traceability, nested_search
+from mi_bici.modeling.tracking import (
+    get_git_executable,
+    log_run_config,
+    log_traceability,
+    nested_search,
+)
 
 
 @pytest.fixture
@@ -101,3 +106,11 @@ def test_nested_search_resumes_mlflow_project_run(experiment, monkeypatch):
 def test_log_best_fails_without_children(experiment):
     with nested_search("P2", "logreg") as search, pytest.raises(ValueError, match="hijas"):
         search.log_best("val_recall")
+
+
+def test_git_executable_missing_raises_clear_error(monkeypatch):
+    """Sin git instalado, el error explica qué falta."""
+    monkeypatch.setattr("mi_bici.modeling.tracking.shutil.which", lambda name: None)
+
+    with pytest.raises(RuntimeError, match="No se encontró git"):
+        get_git_executable()

@@ -4,7 +4,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import hashlib
 import json
-import subprocess
+import shutil
+import subprocess  # nosec B404  # solo ejecuta git con ruta absoluta y sin shell
 from typing import Any
 
 import mlflow
@@ -25,10 +26,21 @@ DATA_MANIFEST = REFERENCES_DIR / "data_manifest.json"
 STAGES_OF_WORK = ("baseline", "search", "candidate")
 
 
+def get_git_executable() -> str:
+    """Localiza git con su ruta absoluta."""
+    git = shutil.which("git")
+
+    if git is None:
+        raise RuntimeError("No se encontró git. Instálalo para registrar el commit del run.")
+
+    return git
+
+
 def get_git_commit() -> str:
     """Obtiene el commit actual del repositorio."""
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+    # Argumentos fijos y git con ruta absoluta: el comando no tiene entrada externa.
+    result = subprocess.run(  # nosec B603
+        [get_git_executable(), "rev-parse", "HEAD"],
         cwd=PROJ_ROOT,
         capture_output=True,
         text=True,
