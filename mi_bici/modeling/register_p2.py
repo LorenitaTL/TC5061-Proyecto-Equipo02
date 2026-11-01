@@ -19,7 +19,7 @@ import typer
 from mi_bici.config import MLFLOW_TRACKING_URI
 
 MODEL_NAME = "mibici-equipo02-p2-riesgo"
-MODEL_ARTIFACT = "model"
+MODEL_ARTIFACT = "p2_risk_model"
 ALIAS = "champion"
 
 app = typer.Typer()
@@ -37,16 +37,17 @@ def lineage_from_run(run) -> dict[str, str]:
         "source_run_id": run.info.run_id,
         "source_run_name": tags.get("mlflow.runName", ""),
         "git_commit": tags.get("git_commit", ""),
-        "data_version": tags.get("features_data_version", ""),
+        "data_version": tags.get("data_version", ""),
+        "features_data_version": params.get("features_data_version", ""),
         "model_family": tags.get("model_family", ""),
-        "ablation": params.get("ablation", ""),
+        "stage_of_work": tags.get("stage_of_work", ""),
+        "ablation": tags.get("ablation", ""),
         "C": params.get("C", ""),
         "class_weight": params.get("class_weight", ""),
         "risk_percentile": params.get("risk_percentile", ""),
-        "prediction_horizon": params.get("prediction_horizon", ""),
+        "prediction_horizon": tags.get("prediction_horizon", ""),
         "unit_of_analysis": tags.get("unit_of_analysis", ""),
     }
-
 
 def validate_source(run) -> None:
     """Exige que el run sea una corrida candidata de P2 terminada."""
@@ -152,7 +153,7 @@ def main(
             "Predice si una estación presenta un nivel de "
             "desbalance operacional alto, definido mediante "
             "el percentil de riesgo calculado sobre TRAIN. "
-            "El modelo seleccionado utiliza regresión logística "
+            "El modelo seleccionado utiliza HistGradientBoosting "
             "con el conjunto de variables correspondiente a la "
             "ablación seleccionada."
         ),
@@ -167,10 +168,10 @@ def main(
         version=version,
         description=(
             "Modelo P2 seleccionado después de comparar "
-            "el baseline y las variantes candidatas mediante "
+            "el baseline y las familias candidatas mediante "
             "métricas de validación temporal. "
-            "La selección priorizó Recall debido al costo "
-            "operativo de no detectar estaciones en riesgo.\n\n"
+            "La selección priorizó el mayor F1 sujeto a una "
+            "precisión mínima de 0.50.\n\n"
             "LINaje:\n"
             f"{lineage_text}\n\n"
             "Métricas registradas:\n"

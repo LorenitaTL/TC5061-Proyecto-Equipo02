@@ -47,19 +47,25 @@ from sklearn.metrics import (
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 import typer
-
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from mi_bici.config import (
     IMPUTER_STRATEGY,
     LOGISTIC_CLASS_WEIGHT,
     LOGISTIC_MAX_ITER,
     LOGISTIC_SOLVER,
+    P2_CLASSIFICATION_THRESHOLD,
+    P2_HGB_LEARNING_RATE,
+    P2_HGB_MAX_ITER,
+    P2_HGB_MAX_LEAF_NODES,
+    P2_HGB_MIN_SAMPLES_LEAF,
+    P2_MODEL_FAMILY,
+    P2_FAMILY_SAMPLE_SIZE,
     PROJ_ROOT,
     RANDOM_STATE,
     RISK_PERCENTILE,
-    TEST_FRACTION,
-    TRAIN_FRACTION,
-    VALIDATION_FRACTION,
 )
+from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END, temporal_masks
+
 from mi_bici.data_tracking import log_training_data
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
@@ -155,12 +161,18 @@ def ablation_features(ablation: str) -> list[str]:
     return [column for column in FEATURE_COLUMNS if column not in removed]
 
 
-def ablation_run_name(ablation: str) -> str:
-    """Nombre del run en MLflow; el modelo completo conserva su nombre histórico."""
-    if ablation == "completo":
-        return "P2-logistic-regression-baseline"
-    return f"P2-logistic-regression-{ablation.replace('_', '-')}"
+def ablation_run_name(
+    ablation: str,
+    model_family: str = P2_MODEL_FAMILY,
+) -> str:
+    """Construye el nombre del run en MLflow según la familia de modelo."""
 
+    family_name = model_family.replace("_", "-")
+
+    if ablation == "completo":
+        return f"P2-{family_name}-candidate"
+
+    return f"P2-{family_name}-{ablation.replace('_', '-')}"
 
 # ---------------------------------------------------------
 # Carga de datos
@@ -211,7 +223,6 @@ def load_features(
 # División temporal
 # ---------------------------------------------------------
 
-
 def temporal_split(
     df: pd.DataFrame,
 ) -> tuple[
@@ -219,63 +230,30 @@ def temporal_split(
     pd.DataFrame,
     pd.DataFrame,
 ]:
-    """
-    Divide los datos respetando el orden cronológico.
+    """Divide los datos utilizando las fechas de corte definidas para P2."""
 
-    Distribución:
-        70 % entrenamiento
-        15 % validación
-        15 % prueba
+    masks = temporal_masks(df["hour"])
 
-    Justificación
-    -------------
-    En P2 no se utiliza una división aleatoria porque eso podría permitir
-    que información de periodos futuros termine en el conjunto de
-    entrenamiento.
-
-    La división temporal simula mejor el escenario real:
-
-        pasado → entrenamiento
-        periodo posterior → validación
-        periodo más reciente → prueba
-    """
-
-    unique_hours = np.sort(df["hour"].unique())
-
-    train_end = int(len(unique_hours) * TRAIN_FRACTION)
-
-    validation_end = int(len(unique_hours) * (TRAIN_FRACTION + VALIDATION_FRACTION))
-
-    train_hours = unique_hours[:train_end]
-
-    validation_hours = unique_hours[train_end:validation_end]
-
-    test_hours = unique_hours[validation_end:]
-
-    train = df[df["hour"].isin(train_hours)].copy()
-
-    validation = df[df["hour"].isin(validation_hours)].copy()
-
-    test = df[df["hour"].isin(test_hours)].copy()
+    train = df[masks["train"]].copy()
+    validation = df[masks["validation"]].copy()
+    test = df[masks["test"]].copy()
 
     logger.info(
-        f"Train: {len(train):,} observaciones ({train['hour'].min()} → {train['hour'].max()})"
+        f"Train: {len(train):,} observaciones "
+        f"({train['hour'].min()} → {train['hour'].max()})"
     )
 
     logger.info(
         f"Validation: {len(validation):,} observaciones "
-        f"({validation['hour'].min()} → "
-        f"{validation['hour'].max()})"
+        f"({validation['hour'].min()} → {validation['hour'].max()})"
     )
 
-    logger.info(f"Test: {len(test):,} observaciones ({test['hour'].min()} → {test['hour'].max()})")
-
-    return (
-        train,
-        validation,
-        test,
+    logger.info(
+        f"Test: {len(test):,} observaciones "
+        f"({test['hour'].min()} → {test['hour'].max()})"
     )
 
+    return train, validation, test
 
 # ---------------------------------------------------------
 # Creación de la etiqueta
@@ -301,7 +279,7 @@ def create_risk_label(
     futura para definir la etiqueta.
     """
 
-    return (df["target_imbalance_ratio"] >= threshold).astype(int)
+    return (df["target_imbalance_ratio"] > threshold).astype(int)
 
 
 # ---------------------------------------------------------
@@ -381,6 +359,427 @@ def evaluate_model(
     )
 
     return metrics
+
+
+
+def build_pipeline(model):
+    """
+    Construye el pipeline de preprocesamiento y clasificación para P2.
+
+    El clasificador se recibe como argumento para permitir comparar
+    diferentes familias de modelos manteniendo el mismo preprocesamiento.
+    """
+    return Pipeline(
+        steps=[
+            (
+                "imputer",
+                SimpleImputer(strategy=IMPUTER_STRATEGY),
+            ),
+            (
+                "scaler",
+                StandardScaler(),
+            ),
+            (
+                "classifier",
+                model,
+            ),
+        ]
+    )
+
+
+def prepare_family_comparison(
+    df: pd.DataFrame,
+) -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    float,
+]:
+    """
+    Prepara los datos para comparar las familias de modelos de P2.
+
+    Utiliza el mismo split temporal y el mismo umbral de riesgo
+    para las tres familias.
+    """
+    train, validation, test = temporal_split(df)
+
+    threshold = train["target_imbalance_ratio"].quantile(RISK_PERCENTILE)
+
+    train = train.copy()
+    validation = validation.copy()
+    test = test.copy()
+
+    train["Risk"] = create_risk_label(train, threshold)
+    validation["Risk"] = create_risk_label(validation, threshold)
+    test["Risk"] = create_risk_label(test, threshold)
+
+    if len(train) > P2_FAMILY_SAMPLE_SIZE:
+        train = train.sample(
+            n=P2_FAMILY_SAMPLE_SIZE,
+            random_state=RANDOM_STATE,
+        )
+
+    return train, validation, test, threshold
+
+
+def get_family_models() -> dict[str, object]:
+    """Devuelve los modelos candidatos para la comparación E4."""
+
+    return {
+        "LogisticRegression": LogisticRegression(
+            max_iter=LOGISTIC_MAX_ITER,
+            class_weight=LOGISTIC_CLASS_WEIGHT,
+            solver=LOGISTIC_SOLVER,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+        ),
+        "HistGradientBoosting": HistGradientBoostingClassifier(
+            learning_rate=P2_HGB_LEARNING_RATE,
+            max_iter=P2_HGB_MAX_ITER,
+            max_leaf_nodes=P2_HGB_MAX_LEAF_NODES,
+            min_samples_leaf=P2_HGB_MIN_SAMPLES_LEAF,
+            random_state=RANDOM_STATE,
+        ),
+        "RandomForest": RandomForestClassifier(
+            n_estimators=50,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+            class_weight="balanced",
+        ),
+    }
+
+def get_classifier(model_family: str):
+    """Devuelve el clasificador correspondiente a una familia de modelos."""
+    models = get_family_models()
+
+    if model_family not in models:
+        raise ValueError(
+            f"Familia de modelo desconocida: {model_family}. "
+            f"Opciones: {list(models)}"
+        )
+
+    return models[model_family]
+
+
+def compare_model_families(
+    train: pd.DataFrame,
+    validation: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Entrena y compara las familias de modelos de P2.
+
+    La selección del threshold se realiza únicamente sobre validation,
+    buscando maximizar F1 sujeto a una precision mínima de 0.50.
+    """
+    features = ablation_features("completo")
+
+    X_train = train[features]
+    y_train = train["Risk"]
+
+    X_validation = validation[features]
+    y_validation = validation["Risk"]
+
+    results = []
+
+    for family, classifier in get_family_models().items():
+        logger.info(f"Entrenando familia: {family}")
+
+        model = build_pipeline(classifier)
+        model.fit(X_train, y_train)
+
+        threshold_results = evaluate_thresholds(
+            model,
+            X_validation,
+            y_validation,
+        )
+
+        selected = select_threshold(
+            threshold_results,
+            min_precision=0.50,
+        )
+
+        results.append(
+            {
+                "model_family": family,
+                "threshold": selected["threshold"],
+                "accuracy": accuracy_score(
+                    y_validation,
+                    (
+                        model.predict_proba(X_validation)[:, 1]
+                        >= selected["threshold"]
+                    ).astype(int),
+                ),
+                "precision": selected["precision"],
+                "recall": selected["recall"],
+                "f1": selected["f1"],
+                "roc_auc": roc_auc_score(
+                    y_validation,
+                    model.predict_proba(X_validation)[:, 1],
+                ),
+            }
+        )
+
+        logger.info(
+            f"{family} | "
+            f"Threshold={selected['threshold']:.2f} | "
+            f"Recall={selected['recall']:.4f} | "
+            f"Precision={selected['precision']:.4f} | "
+            f"F1={selected['f1']:.4f}"
+        )
+
+    return pd.DataFrame(results).sort_values(
+        by="f1",
+        ascending=False,
+    )
+
+
+def evaluate_thresholds(
+    model,
+    X_validation: pd.DataFrame,
+    y_validation: pd.Series,
+) -> pd.DataFrame:
+    """
+    Evalúa distintos thresholds sobre validation.
+
+    El modelo ya debe estar entrenado. El threshold se selecciona
+    únicamente con datos de validation.
+    """
+    probabilities = model.predict_proba(X_validation)[:, 1]
+
+    results = []
+
+    for threshold in [
+        0.10,
+        0.15,
+        0.20,
+        0.25,
+        0.30,
+        0.35,
+        0.40,
+        0.45,
+        0.50,
+        0.55,
+        0.60,
+        0.65,
+        0.70,
+        0.75,
+        0.80,
+        0.85,
+        0.90,
+    ]:
+        predictions = (probabilities >= threshold).astype(int)
+
+        precision = precision_score(
+            y_validation,
+            predictions,
+            zero_division=0,
+        )
+        recall = recall_score(
+            y_validation,
+            predictions,
+            zero_division=0,
+        )
+        f1 = f1_score(
+            y_validation,
+            predictions,
+            zero_division=0,
+        )
+
+        results.append(
+            {
+                "threshold": threshold,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+            }
+        )
+
+    return pd.DataFrame(results)
+
+def select_threshold(
+    threshold_results: pd.DataFrame,
+    min_precision: float = 0.50,
+) -> pd.Series:
+    """
+    Selecciona el threshold con mayor F1 sujeto a una precisión mínima.
+    """
+    candidates = threshold_results[
+        threshold_results["precision"] >= min_precision
+    ]
+
+    if candidates.empty:
+        raise ValueError(
+            f"No hay thresholds con precision >= {min_precision:.2f}"
+        )
+
+    return candidates.sort_values(
+        by=["f1", "recall"],
+        ascending=[False, False],
+    ).iloc[0]
+
+def search_hgb_hyperparameters(
+    train: pd.DataFrame,
+    validation: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Busca una configuración pequeña de HistGradientBoosting.
+
+    El umbral de riesgo se calcula únicamente sobre TRAIN y se utiliza
+    para construir las etiquetas de TRAIN y VALIDATION.
+
+    La selección del threshold de clasificación se realiza únicamente
+    sobre VALIDATION, buscando maximizar F1 sujeto a una precision
+    mínima de 0.50.
+    """
+
+    features = ablation_features("completo")
+
+    train = train.copy()
+    validation = validation.copy()
+
+    # ---------------------------------------------------------
+    # Crear etiqueta Risk usando únicamente TRAIN
+    # ---------------------------------------------------------
+    risk_threshold = train["target_imbalance_ratio"].quantile(
+        RISK_PERCENTILE
+    )
+
+    train["Risk"] = create_risk_label(
+        train,
+        risk_threshold,
+    )
+
+    validation["Risk"] = create_risk_label(
+        validation,
+        risk_threshold,
+    )
+
+    logger.info(
+        f"Risk threshold P{RISK_PERCENTILE:.0%}: "
+        f"{risk_threshold:.6f}"
+    )
+
+    logger.info(
+        f"TRAIN positivos: {train['Risk'].mean():.4%}"
+    )
+
+    logger.info(
+        f"VALIDATION positivos: {validation['Risk'].mean():.4%}"
+    )
+
+    X_train = train[features]
+    y_train = train["Risk"]
+
+    X_validation = validation[features]
+    y_validation = validation["Risk"]
+
+    # ---------------------------------------------------------
+    # Búsqueda HGB reducida
+    # ---------------------------------------------------------
+    param_grid = [
+        {
+            "learning_rate": 0.10,
+            "max_iter": 100,
+            "max_leaf_nodes": 31,
+            "min_samples_leaf": 20,
+        },
+        {
+            "learning_rate": 0.05,
+            "max_iter": 100,
+            "max_leaf_nodes": 31,
+            "min_samples_leaf": 20,
+        },
+        {
+            "learning_rate": 0.10,
+            "max_iter": 200,
+            "max_leaf_nodes": 31,
+            "min_samples_leaf": 20,
+        },
+        {
+            "learning_rate": 0.10,
+            "max_iter": 100,
+            "max_leaf_nodes": 63,
+            "min_samples_leaf": 20,
+        },
+    ]
+
+    results = []
+
+    for i, params in enumerate(param_grid, start=1):
+        logger.info(
+            f"HGB configuración {i}/{len(param_grid)}: "
+            f"{params}"
+        )
+
+        classifier = HistGradientBoostingClassifier(
+            **params,
+            random_state=RANDOM_STATE,
+        )
+
+        model = build_pipeline(classifier)
+
+        model.fit(
+            X_train,
+            y_train,
+        )
+
+        threshold_results = evaluate_thresholds(
+            model,
+            X_validation,
+            y_validation,
+        )
+
+        selected = select_threshold(
+            threshold_results,
+            min_precision=0.50,
+        )
+
+        probabilities = model.predict_proba(
+            X_validation
+        )[:, 1]
+
+        predictions = (
+            probabilities >= selected["threshold"]
+        ).astype(int)
+
+        results.append(
+            {
+                **params,
+                "threshold": selected["threshold"],
+                "accuracy": accuracy_score(
+                    y_validation,
+                    predictions,
+                ),
+                "precision": selected["precision"],
+                "recall": selected["recall"],
+                "f1": selected["f1"],
+                "roc_auc": roc_auc_score(
+                    y_validation,
+                    probabilities,
+                ),
+            }
+        )
+
+        logger.info(
+            f"HGB configuración {i} | "
+            f"Threshold={selected['threshold']:.2f} | "
+            f"Recall={selected['recall']:.4f} | "
+            f"Precision={selected['precision']:.4f} | "
+            f"F1={selected['f1']:.4f} | "
+            f"ROC-AUC={results[-1]['roc_auc']:.4f}"
+        )
+
+    results_df = pd.DataFrame(results).sort_values(
+        by=["f1", "recall", "roc_auc"],
+        ascending=[False, False, False],
+    )
+
+    logger.success(
+        "Mejor configuración HGB: "
+        f"{results_df.iloc[0].to_dict()}"
+    )
+
+    return results_df.reset_index(drop=True)
 
 
 def run_hyperparameter_search(
@@ -564,7 +963,7 @@ def run_hyperparameter_search(
                     name=f"p2_search_{ablation}_{class_weight_name}",
                     source=input_path.resolve().as_uri(),
                     target="Risk",
-                )
+                    )
 
                 model.fit(X_train, y_train)
 
@@ -737,31 +1136,30 @@ def main(
 def train_model(
     input_path: Path,
     ablation: str,
+    model_family: str = P2_MODEL_FAMILY,
 ):
     """
     Entrena el modelo de clasificación de riesgo operacional P2.
 
-    Con una ablación distinta de "completo" se entrena el mismo pipeline sin
-    las variables indicadas en ABLATIONS, y solo se registra en MLflow, sin
-    reemplazar los archivos del modelo final en models/.
+    Se distinguen dos umbrales:
 
-    Además de generar los archivos locales del modelo, registra en MLflow:
+    - risk_threshold:
+        Percentil P80 del índice target_imbalance_ratio calculado
+        exclusivamente sobre TRAIN. Define la etiqueta Risk.
 
-    - parámetros del experimento;
-    - características del conjunto de datos;
-    - versión de los datos;
-    - commit de Git;
-    - pregunta de negocio;
-    - métricas de entrenamiento, validación y prueba;
-    - archivos generados;
-    - modelo entrenado.
+    - classification_threshold:
+        Umbral aplicado a la probabilidad predicha por el modelo para
+        convertirla en la clase Risk.
 
-    De esta forma el experimento puede ser reproducido y auditado.
+    Los hiperparámetros y el threshold de clasificación se obtienen
+    desde mi_bici.config para garantizar reproducibilidad.
     """
 
     logger.info(f"Iniciando entrenamiento P2 ({ablation})...")
 
     features = ablation_features(ablation)
+
+    classification_threshold = P2_CLASSIFICATION_THRESHOLD
 
     # -----------------------------------------------------
     # 1. Configuración de MLflow
@@ -774,22 +1172,30 @@ def train_model(
     run = mlflow.active_run()
 
     if run is None:
-        run_context = mlflow.start_run(run_name=ablation_run_name(ablation))
+        run_context = mlflow.start_run(
+            run_name=ablation_run_name(
+                ablation,
+                model_family=model_family,
+            )
+        )
     else:
         run_context = nullcontext(run)
 
     with run_context as run:
+
         # -------------------------------------------------
         # Tags de trazabilidad
         # -------------------------------------------------
 
-        log_p2_traceability()
+        log_p2_traceability(
+            model_family=model_family,
+            stage_of_work="candidate",
+        )
+
         mlflow.set_tags(
             {
                 "project": "MiBici",
                 "question": "P2",
-                "model_family": "LogisticRegression",
-                "stage_of_work": "baseline" if ablation == "completo" else "candidate",
                 "business_question": BUSINESS_QUESTION,
                 "prediction_horizon": "1 hour",
                 "unit_of_analysis": "station-hour",
@@ -805,10 +1211,7 @@ def train_model(
 
         df = load_features(input_path)
 
-        # El rango temporal real de los datos utilizados se registra
-        # después de cargar y validar el archivo.
         data_start = df["hour"].min().isoformat()
-
         data_end = df["hour"].max().isoformat()
 
         # -------------------------------------------------
@@ -825,9 +1228,14 @@ def train_model(
         # 4. Umbral P80 calculado SOLO con train
         # -------------------------------------------------
 
-        risk_threshold = train["target_imbalance_ratio"].quantile(RISK_PERCENTILE)
+        risk_threshold = train[
+            "target_imbalance_ratio"
+        ].quantile(RISK_PERCENTILE)
 
-        logger.info(f"Umbral de riesgo P80 calculado sobre TRAIN: {risk_threshold:.6f}")
+        logger.info(
+            "Umbral de riesgo P80 calculado sobre TRAIN: "
+            f"{risk_threshold:.6f}"
+        )
 
         train["Risk"] = create_risk_label(
             train,
@@ -844,6 +1252,19 @@ def train_model(
             risk_threshold,
         )
 
+        logger.info(
+            f"TRAIN positive rate: {train['Risk'].mean():.4%}"
+        )
+
+        logger.info(
+            f"VALIDATION positive rate: "
+            f"{validation['Risk'].mean():.4%}"
+        )
+
+        logger.info(
+            f"TEST positive rate: {test['Risk'].mean():.4%}"
+        )
+
         log_training_data(
             train[features + ["Risk"]],
             name="p2_training_data",
@@ -858,25 +1279,39 @@ def train_model(
         mlflow.log_params(
             {
                 # Modelo
-                "class_weight": LOGISTIC_CLASS_WEIGHT,
-                "max_iter": LOGISTIC_MAX_ITER,
-                "solver": LOGISTIC_SOLVER,
+                "model_family": model_family,
+                "classification_threshold": classification_threshold,
                 "random_state": RANDOM_STATE,
+
+                # HistGradientBoosting
+                "learning_rate": P2_HGB_LEARNING_RATE,
+                "max_iter": P2_HGB_MAX_ITER,
+                "max_leaf_nodes": P2_HGB_MAX_LEAF_NODES,
+                "min_samples_leaf": P2_HGB_MIN_SAMPLES_LEAF,
+
                 # Preprocesamiento
                 "imputer_strategy": IMPUTER_STRATEGY,
                 "scaler": "StandardScaler",
+
                 # Definición del problema
                 "risk_percentile": RISK_PERCENTILE,
+                "risk_threshold": float(risk_threshold),
                 "prediction_horizon": "1h",
+
                 # División temporal
-                "train_fraction": TRAIN_FRACTION,
-                "validation_fraction": VALIDATION_FRACTION,
-                "test_fraction": TEST_FRACTION,
+                "train_end": TRAIN_END.strftime("%Y-%m-%d"),
+                "validation_end": VALIDATION_END.strftime(
+                    "%Y-%m-%d"
+                ),
+
                 # Características
                 "ablation": ablation,
-                "removed_features": ",".join(ABLATIONS[ablation]) or "ninguna",
+                "removed_features": ",".join(
+                    ABLATIONS[ablation]
+                ) or "ninguna",
                 "n_features": len(features),
                 "features": ",".join(features),
+
                 # Datos
                 "data_start": data_start,
                 "data_end": data_end,
@@ -896,8 +1331,12 @@ def train_model(
                 "test_observations": float(len(test)),
                 "train_risk_threshold": float(risk_threshold),
                 "train_risk_rate": float(train["Risk"].mean()),
-                "validation_risk_rate": float(validation["Risk"].mean()),
-                "test_risk_rate": float(test["Risk"].mean()),
+                "validation_risk_rate": float(
+                    validation["Risk"].mean()
+                ),
+                "test_risk_rate": float(
+                    test["Risk"].mean()
+                ),
             }
         )
 
@@ -906,45 +1345,27 @@ def train_model(
         # -------------------------------------------------
 
         X_train = train[features]
-
         y_train = train["Risk"]
 
         X_validation = validation[features]
-
         y_validation = validation["Risk"]
 
         X_test = test[features]
-
         y_test = test["Risk"]
 
         # -------------------------------------------------
         # 8. Definir modelo
         # -------------------------------------------------
 
-        model = Pipeline(
-            steps=[
-                (
-                    "imputer",
-                    SimpleImputer(strategy=IMPUTER_STRATEGY),
-                ),
-                (
-                    "scaler",
-                    StandardScaler(),
-                ),
-                (
-                    "classifier",
-                    LogisticRegression(
-                        max_iter=LOGISTIC_MAX_ITER,
-                        class_weight=LOGISTIC_CLASS_WEIGHT,
-                        solver=LOGISTIC_SOLVER,
-                        random_state=RANDOM_STATE,
-                        n_jobs=-1,
-                    ),
-                ),
-            ]
-        )
 
-        logger.info("Entrenando Logistic Regression...")
+
+        classifier = get_classifier(model_family)
+
+        model = build_pipeline(classifier)
+
+        logger.info(
+            f"Entrenando {model_family}..."
+        )
 
         model.fit(
             X_train,
@@ -954,61 +1375,153 @@ def train_model(
         logger.success("Modelo entrenado.")
 
         # -------------------------------------------------
-        # 9. Evaluación
+        # 9. Evaluación con threshold de clasificación
         # -------------------------------------------------
 
-        train_metrics = evaluate_model(
-            model,
+        def evaluate_with_threshold(
+            dataset_name: str,
+            X: pd.DataFrame,
+            y: pd.Series,
+        ) -> dict:
+
+            probabilities = model.predict_proba(X)[:, 1]
+
+            predictions = (
+                probabilities >= classification_threshold
+            ).astype(int)
+
+            metrics = {
+                "accuracy": accuracy_score(
+                    y,
+                    predictions,
+                ),
+                "precision": precision_score(
+                    y,
+                    predictions,
+                    zero_division=0,
+                ),
+                "recall": recall_score(
+                    y,
+                    predictions,
+                    zero_division=0,
+                ),
+                "f1": f1_score(
+                    y,
+                    predictions,
+                    zero_division=0,
+                ),
+                "roc_auc": roc_auc_score(
+                    y,
+                    probabilities,
+                ),
+            }
+
+            logger.info(
+                f"{dataset_name} | "
+                f"Threshold={classification_threshold:.2f} | "
+                f"Accuracy={metrics['accuracy']:.4f} | "
+                f"Precision={metrics['precision']:.4f} | "
+                f"Recall={metrics['recall']:.4f} | "
+                f"F1={metrics['f1']:.4f} | "
+                f"ROC-AUC={metrics['roc_auc']:.4f}"
+            )
+
+            return {
+                **metrics,
+                "predictions": predictions,
+                "probabilities": probabilities,
+            }
+
+        train_metrics = evaluate_with_threshold(
+            "train",
             X_train,
             y_train,
-            "train",
         )
 
-        validation_metrics = evaluate_model(
-            model,
+        validation_metrics = evaluate_with_threshold(
+            "validation",
             X_validation,
             y_validation,
-            "validation",
         )
 
-        test_metrics = evaluate_model(
-            model,
+        test_metrics = evaluate_with_threshold(
+            "test",
             X_test,
             y_test,
-            "test",
         )
 
         # -------------------------------------------------
-        # 9.1 Matriz de confusión para P2
+        # 9.1 Registrar métricas en MLflow
         # -------------------------------------------------
 
-        test_predictions = model.predict(X_test)
+        for name, value in train_metrics.items():
+            if isinstance(value, (int, float, np.number)):
+                mlflow.log_metric(
+                    f"train_{name}",
+                    float(value),
+                )
 
-        confusion_matrix_display = ConfusionMatrixDisplay.from_predictions(
-            y_test,
-            test_predictions,
-            display_labels=["Riesgo normal", "Alto riesgo"],
-            values_format="d",
+        for name, value in validation_metrics.items():
+            if isinstance(value, (int, float, np.number)):
+                mlflow.log_metric(
+                    f"validation_{name}",
+                    float(value),
+                )
+
+        for name, value in test_metrics.items():
+            if isinstance(value, (int, float, np.number)):
+                mlflow.log_metric(
+                    f"test_{name}",
+                    float(value),
+                )
+
+        mlflow.log_metric(
+            "classification_threshold",
+            float(classification_threshold),
         )
 
-        confusion_matrix_display.ax_.set_title("P2 - Matriz de confusión en TEST")
+        # -------------------------------------------------
+        # 9.2 Matriz de confusión para P2
+        # -------------------------------------------------
+
+        test_predictions = test_metrics["predictions"]
+
+        confusion_matrix_display = (
+            ConfusionMatrixDisplay.from_predictions(
+                y_test,
+                test_predictions,
+                display_labels=[
+                    "Riesgo normal",
+                    "Alto riesgo",
+                ],
+                values_format="d",
+            )
+        )
+
+        confusion_matrix_display.ax_.set_title(
+            "P2 - Matriz de confusión en TEST"
+        )
 
         mlflow.log_figure(
             confusion_matrix_display.figure_,
             "plots/confusion_matrix_test.png",
         )
 
-        plt.close(confusion_matrix_display.figure_)
+        plt.close(
+            confusion_matrix_display.figure_
+        )
 
         # -------------------------------------------------
-        # 9.2 Curva Precision-Recall para P2
+        # 9.3 Curva Precision-Recall para P2
         # -------------------------------------------------
 
-        test_probabilities = model.predict_proba(X_test)[:, 1]
+        test_probabilities = test_metrics["probabilities"]
 
-        precision_values, recall_values, _ = precision_recall_curve(
-            y_test,
-            test_probabilities,
+        precision_values, recall_values, _ = (
+            precision_recall_curve(
+                y_test,
+                test_probabilities,
+            )
         )
 
         fig, ax = plt.subplots()
@@ -1018,7 +1531,9 @@ def train_model(
             precision_values,
         )
 
-        ax.set_title("P2 - Curva Precision-Recall en TEST")
+        ax.set_title(
+            "P2 - Curva Precision-Recall en TEST"
+        )
         ax.set_xlabel("Recall")
         ax.set_ylabel("Precision")
         ax.grid(True)
@@ -1029,50 +1544,57 @@ def train_model(
         )
 
         plt.close(fig)
-        # -------------------------------------------------
-        # 10. Registrar métricas en MLflow
-        # -------------------------------------------------
-
-        for name, value in train_metrics.items():
-            mlflow.log_metric(
-                f"train_{name}",
-                float(value),
-            )
-
-        for name, value in validation_metrics.items():
-            mlflow.log_metric(
-                f"validation_{name}",
-                float(value),
-            )
-
-        for name, value in test_metrics.items():
-            mlflow.log_metric(
-                f"test_{name}",
-                float(value),
-            )
 
         # -------------------------------------------------
-        # 11. Guardar archivos locales
+        # 10. Construir tabla de métricas
         # -------------------------------------------------
 
         metrics_df = pd.DataFrame(
             [
                 {
                     "dataset": "train",
-                    **train_metrics,
+                    **{
+                        key: value
+                        for key, value in train_metrics.items()
+                        if isinstance(
+                            value,
+                            (int, float, np.number),
+                        )
+                    },
                 },
                 {
                     "dataset": "validation",
-                    **validation_metrics,
+                    **{
+                        key: value
+                        for key, value in validation_metrics.items()
+                        if isinstance(
+                            value,
+                            (int, float, np.number),
+                        )
+                    },
                 },
                 {
                     "dataset": "test",
-                    **test_metrics,
+                    **{
+                        key: value
+                        for key, value in test_metrics.items()
+                        if isinstance(
+                            value,
+                            (int, float, np.number),
+                        )
+                    },
                 },
             ]
         )
 
-        # Las ablaciones no reemplazan los archivos del modelo final.
+        # -------------------------------------------------
+        # 11. Guardar archivos locales
+        # -------------------------------------------------
+
+        classification_threshold_path = (
+            MODEL_DIR / "p2_classification_threshold.txt"
+        )
+
         if ablation == "completo":
             MODEL_DIR.mkdir(
                 parents=True,
@@ -1089,6 +1611,11 @@ def train_model(
                 encoding="utf-8",
             )
 
+            classification_threshold_path.write_text(
+                str(classification_threshold),
+                encoding="utf-8",
+            )
+
             joblib.dump(
                 model,
                 MODEL_PATH,
@@ -1098,15 +1625,30 @@ def train_model(
         # 12. Registrar artifacts en MLflow
         # -------------------------------------------------
 
-        mlflow.log_text(metrics_df.to_csv(index=False), METRICS_PATH.name)
+        mlflow.log_text(
+            metrics_df.to_csv(index=False),
+            METRICS_PATH.name,
+        )
 
-        mlflow.log_text(str(risk_threshold), THRESHOLD_PATH.name)
+        mlflow.log_text(
+            str(risk_threshold),
+            THRESHOLD_PATH.name,
+        )
+
+        mlflow.log_text(
+            str(classification_threshold),
+            classification_threshold_path.name,
+        )
 
         # -------------------------------------------------
         # 12.1 Registrar manifiesto de datos
         # -------------------------------------------------
 
-        data_manifest_path = PROJ_ROOT / "references" / "data_manifest.json"
+        data_manifest_path = (
+            PROJ_ROOT
+            / "references"
+            / "data_manifest.json"
+        )
 
         if data_manifest_path.is_file():
             mlflow.log_artifact(
@@ -1114,7 +1656,10 @@ def train_model(
                 artifact_path="data",
             )
         else:
-            logger.warning(f"No se encontró el manifiesto de datos: {data_manifest_path}")
+            logger.warning(
+                "No se encontró el manifiesto de datos: "
+                f"{data_manifest_path}"
+            )
 
         # -------------------------------------------------
         # 12.2 Registrar configuración
@@ -1128,7 +1673,10 @@ def train_model(
                 artifact_path="config",
             )
         else:
-            logger.warning(f"No se encontró el archivo de configuración: {config_path}")
+            logger.warning(
+                "No se encontró el archivo de configuración: "
+                f"{config_path}"
+            )
 
         # -------------------------------------------------
         # 13. Registrar modelo en MLflow
@@ -1136,7 +1684,7 @@ def train_model(
 
         signature = infer_signature(
             X_test,
-            model.predict(X_test),
+            test_predictions,
         )
 
         mlflow.sklearn.log_model(
@@ -1144,59 +1692,109 @@ def train_model(
             name="p2_risk_model",
             signature=signature,
             input_example=X_test.head(5),
-            skops_trusted_types=["numpy.dtype"],
+            skops_trusted_types=[
+                "numpy.dtype",
+                "sklearn.ensemble._hist_gradient_boosting.predictor.TreePredictor",
+            ],
         )
 
         # -------------------------------------------------
-        # 13.1 Registrar linaje del modelo
+        # 13.1 Finalizar
+        # -------------------------------------------------
 
-        logger.success("Modelo registrado en MLflow Model Registry.")
-        """logger.success(
-            f"Modelo: mibici-equipo02-p2-riesgo "
-            f"v{model_info.registered_model_version}"
-        )"""
+        logger.success(
+            "Modelo registrado en MLflow."
+        )
 
-        logger.success("Modelo registrado en MLflow.")
+        logger.success(
+            f"MLflow Run ID: {run.info.run_id}"
+        )
 
-        logger.success(f"MLflow Run ID: {run.info.run_id}")
-
-        logger.success(f"Versión del archivo de features: {features_data_version[:12]}...")
+        logger.success(
+            "Versión del archivo de features: "
+            f"{features_data_version[:12]}..."
+        )
 
         if ablation == "completo":
-            logger.success(f"Modelo local: {MODEL_PATH}")
+            logger.success(
+                f"Modelo local: {MODEL_PATH}"
+            )
 
-            logger.success(f"Métricas: {METRICS_PATH}")
+            logger.success(
+                f"Métricas: {METRICS_PATH}"
+            )
 
-            logger.success(f"Threshold: {THRESHOLD_PATH}")
+            logger.success(
+                f"Risk threshold: {THRESHOLD_PATH}"
+            )
 
+            logger.success(
+                "Classification threshold: "
+                f"{classification_threshold_path}"
+            )
 
 def run(model: str, params: dict):
     """
     Entry point for P2 training.
 
-    model="default" -> baseline / ablation training
-    model="search"  -> nested hyperparameter search
+    model:
+        - "default" -> familia seleccionada en P2_MODEL_FAMILY.
+        - "logistic_regression" -> Logistic Regression.
+        - "hist_gradient_boosting" -> HistGradientBoosting.
+        - "random_forest" -> Random Forest.
+        - "search" -> búsqueda de hiperparámetros de Logistic Regression.
     """
 
     input_path = Path(params.get("input_path", DATASET_PATH))
     ablation = params.get("ablation", "completo")
 
-    # Hyperparameter search
+    # -------------------------------------------------
+    # Búsqueda de hiperparámetros existente
+    # -------------------------------------------------
     if model == "search":
         return run_hyperparameter_search(input_path)
 
+    # -------------------------------------------------
+    # Selección de familia de modelo
+    # -------------------------------------------------
+    model_families = {
+        "logistic_regression": "LogisticRegression",
+        "hist_gradient_boosting": "HistGradientBoosting",
+        "random_forest": "RandomForest",
+    }
+
+    if model == "default":
+        selected_model_family = P2_MODEL_FAMILY
+    elif model in model_families:
+        selected_model_family = model_families[model]
+    else:
+        raise ValueError(
+            f"Modelo desconocido: {model}. "
+            f"Opciones: default, "
+            f"{', '.join(model_families)}, search"
+        )
+
+    # -------------------------------------------------
     # Normal P2 training
+    # -------------------------------------------------
     if ablation == "todas":
         ablations = list(ABLATIONS)
     elif ablation in ABLATIONS:
         ablations = [ablation]
     else:
-        raise ValueError(f"Ablación desconocida: {ablation}. Opciones: {list(ABLATIONS)}")
+        raise ValueError(
+            f"Ablación desconocida: {ablation}. "
+            f"Opciones: {list(ABLATIONS)}"
+        )
 
     run_ids = []
 
     for name in ablations:
-        run_id = train_model(input_path, name)
+        run_id = train_model(
+            input_path,
+            name,
+            model_family=selected_model_family,
+        )
         run_ids.append(run_id)
 
     return run_ids
