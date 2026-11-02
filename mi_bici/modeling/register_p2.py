@@ -4,7 +4,9 @@ Uso::
 
     python -m mi_bici.modeling.register_p2 --run-id <RUN_ID>
 
-El run de origen debe ser una corrida candidata de P2 terminada.
+El run de origen debe ser una corrida candidata de P2 terminada, con su commit de Git y la
+versión de los datos, para que la versión registrada quede ligada al código y a los datos que
+la produjeron.
 """
 
 import json
@@ -22,36 +24,59 @@ MODEL_NAME = "mibici-equipo02-p2-riesgo"
 MODEL_ARTIFACT = "p2_risk_model"
 ALIAS = "champion"
 
+# Sin estos tags no se puede saber con qué código y qué datos se entrenó el modelo.
+REQUIRED_LINEAGE = ("git_commit", "data_version")
+
+# Parámetros del run que se copian al linaje si existen. Los hiperparámetros dependen de la
+# familia (HistGradientBoosting o regresión logística), así que solo se copian los del modelo.
+LINEAGE_PARAMS = (
+    "features_data_version",
+    "train_end",
+    "validation_end",
+    "risk_percentile",
+    "risk_threshold",
+    "classification_threshold",
+    "learning_rate",
+    "max_iter",
+    "max_leaf_nodes",
+    "min_samples_leaf",
+    "C",
+    "class_weight",
+)
+
 app = typer.Typer()
 
 
 def lineage_from_run(run) -> dict[str, str]:
-    """Reúne el linaje del modelo a partir de los tags y parámetros del run."""
+    """Reúne el linaje del modelo a partir de los tags y parámetros del run.
+
+    ``git_commit`` y ``data_version`` son obligatorios (``validate_source`` los exige); el
+    resto se incluye solo si el run lo registró, para no guardar valores vacíos.
+    """
 
     tags = run.data.tags
     params = run.data.params
 
-    return {
+    lineage = {
         "question": "P2",
         "experiment_id": run.info.experiment_id,
         "source_run_id": run.info.run_id,
         "source_run_name": tags.get("mlflow.runName", ""),
-        "git_commit": tags.get("git_commit", ""),
-        "data_version": tags.get("data_version", ""),
-        "features_data_version": params.get("features_data_version", ""),
+        "git_commit": tags["git_commit"],
+        "data_version": tags["data_version"],
         "model_family": tags.get("model_family", ""),
         "stage_of_work": tags.get("stage_of_work", ""),
         "ablation": tags.get("ablation", ""),
-        "C": params.get("C", ""),
-        "class_weight": params.get("class_weight", ""),
-        "risk_percentile": params.get("risk_percentile", ""),
         "prediction_horizon": tags.get("prediction_horizon", ""),
         "unit_of_analysis": tags.get("unit_of_analysis", ""),
     }
+    lineage.update({key: params.get(key, "") for key in LINEAGE_PARAMS})
+
+    return {key: value for key, value in lineage.items() if value != ""}
 
 
 def validate_source(run) -> None:
-    """Exige que el run sea una corrida candidata de P2 terminada."""
+    """Exige que el run sea una corrida candidata de P2 terminada y con linaje completo."""
 
     if run.info.status != "FINISHED":
         raise ValueError("La corrida de origen debe estar terminada.")
@@ -61,6 +86,13 @@ def validate_source(run) -> None:
 
     if run.data.tags.get("stage_of_work") != "candidate":
         raise ValueError("Solo se registran corridas candidatas (stage_of_work=candidate).")
+
+    missing = [key for key in REQUIRED_LINEAGE if not run.data.tags.get(key)]
+    if missing:
+        raise ValueError(
+            f"La corrida de origen no tiene linaje completo: falta {', '.join(missing)}. "
+            "Vuelve a entrenarla con python -m mi_bici.modeling.train --question p2."
+        )
 
 
 @app.command()
@@ -173,7 +205,7 @@ def main(
             "métricas de validación temporal. "
             "La selección priorizó el mayor F1 sujeto a una "
             "precisión mínima de 0.50.\n\n"
-            "LINaje:\n"
+            "Linaje:\n"
             f"{lineage_text}\n\n"
             "Métricas registradas:\n"
             f"{metrics_text}"
@@ -185,13 +217,12 @@ def main(
     # ---------------------------------------------------------
 
     for key, value in lineage.items():
-        if value != "":
-            client.set_model_version_tag(
-                name,
-                version,
-                key,
-                str(value),
-            )
+        client.set_model_version_tag(
+            name,
+            version,
+            key,
+            str(value),
+        )
 
     # ---------------------------------------------------------
     # 7. Verificar que el modelo registrado pueda cargarse

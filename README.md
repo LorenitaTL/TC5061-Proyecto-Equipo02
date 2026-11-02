@@ -531,7 +531,7 @@ riesgo, contra 44 % de la regla de persistencia.
 P2 utiliza el experimento:
 
 ```text
-P2-operational-risk
+mibici-equipo02
 ```
 
 Los runs registran información de trazabilidad incluyendo:
@@ -561,6 +561,11 @@ champion
 ```
 
 La versión registrada corresponde a la candidata final de HistGradientBoosting.
+`register_p2` solo registra corridas que tengan `git_commit` y `data_version`, para que el
+linaje en el Registry quede completo. La versión champion guarda como tags el run de origen,
+el commit, la versión de los datos y los hiperparámetros del modelo:
+
+![Linaje de la versión champion de P2 en el Model Registry](reports/figures/evidencia/mlflow_p2_champion_linaje.png)
 
 ### Reproducibilidad de P2
 
@@ -598,14 +603,8 @@ La comparación de familias y la búsqueda de hiperparámetros se realizan utili
 
 El proyecto cuenta con pruebas automatizadas para validar el comportamiento del split temporal, la construcción de la etiqueta de riesgo, la evaluación del modelo, la configuración de las familias y la integración del entrenamiento P2.
 
-La suite completa se ejecutó satisfactoriamente:
-
-```text
-102 passed, 1 warning
-```
-
-El único warning corresponde a una deprecación proveniente de SQLAlchemy/MLflow y no a una falla de las pruebas de P2.
-
+El detalle de cada prueba y cómo correrlas está en [Pruebas de P2](#pruebas-de-p2) y
+[Reproducibilidad del entrenamiento › P2](#p2).
 
 ## P3 — Grupos de estaciones por perfil de uso
 
@@ -1034,7 +1033,20 @@ Resultado local: 2 pruebas aprobadas.
 
 Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
 
-_Pendiente._
+`tests/test_reproducibility_p2.py` entrena dos veces cada familia candidata con
+`build_pipeline(get_classifier(familia))`, los mismos datos sintéticos y la semilla
+`RANDOM_STATE`, sin leer los datos de MiBici ni usar MLflow:
+
+```bash
+python -m pytest tests/test_reproducibility_p2.py -v
+```
+
+| Prueba | Qué valida |
+| :--- | :--- |
+| `test_p2_training_is_reproducible` (×3) | Para regresión logística, HistGradientBoosting y Random Forest, dos entrenamientos dan las mismas probabilidades y predicciones. |
+| `test_random_forest_changes_with_another_seed` | Caso de control: con otra semilla, Random Forest da probabilidades distintas. Se usa Random Forest porque su bootstrap depende de la semilla; la regresión logística y HistGradientBoosting (sin early stopping con estos datos) dan lo mismo con cualquier semilla, así que no servirían de control. |
+
+![Pruebas de reproducibilidad de P2](reports/figures/evidencia/pytest_p2_reproducibilidad.png)
 
 #### P3
 
@@ -1224,6 +1236,29 @@ python -m pytest tests/test_features_p2.py -v
 ```
 
 ![Pruebas de las features de P2](reports/figures/evidencia/pytest_p2_features.png)
+
+`tests/test_train_p2.py` prueba la preparación y la evaluación del entrenamiento, y
+`tests/test_register_p2.py` el linaje del registro, también con datos sintéticos y sin
+MLflow:
+
+- `temporal_split`: respeta las fechas de corte de `config.py` y las tres particiones son
+  disjuntas y cubren todas las observaciones.
+- `create_risk_label`: la etiqueta es 0/1 y un valor igual al umbral no es riesgo (`>`
+  estricto), así que los empates en el P80 no inflan la clase positiva.
+- `evaluate_model`: métricas calculadas a mano (TP=FP=FN=TN=1), una probabilidad de 0.5
+  cuenta como riesgo y un conjunto sin horas de riesgo da precision, recall y F1 en 0 sin
+  fallar.
+- Ablaciones: número de variables de cada versión y nombre del run por familia.
+- `register_p2.validate_source` y `lineage_from_run`: aceptan una candidata de P2 terminada;
+  rechazan corridas fallidas, de otra pregunta, de tipo baseline o sin `git_commit` o
+  `data_version` (atiende el comentario del tutor sobre el linaje), y el linaje solo lleva
+  los hiperparámetros del modelo registrado.
+
+```bash
+python -m pytest tests/test_train_p2.py tests/test_register_p2.py -v
+```
+
+![Pruebas del entrenamiento y del registro de P2](reports/figures/evidencia/pytest_p2_entrenamiento.png)
 
 ### Seguridad
 
