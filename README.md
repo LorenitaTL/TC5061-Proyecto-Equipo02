@@ -1345,7 +1345,35 @@ hacer si reporta algo está en [Secret scanning](#secret-scanning).
 
 Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
 
-_Pendiente._
+`make coverage` corre la suite completa y mide qué líneas de `mi_bici/` ejecutan las
+pruebas:
+
+```bash
+make coverage
+```
+
+Con todos los PRs de esta actividad, la suite tiene 149 pruebas en 22 archivos: 144 pasan y
+5 se omiten en el entorno principal porque requieren DeepChecks (corren en `.venv-validation`
+y en el job `validation` de CI). La cobertura de `mi_bici/` pasó de **28 % a 40 %**.
+También se quitaron `predict.py` y `plots.py`, que eran el código de ejemplo de la
+plantilla de cookiecutter y no se usaban.
+
+| Módulos | Cobertura | Por qué |
+| :--- | ---: | :--- |
+| `features_p3`, `splits_p1`, `splits_p2` | 100 % | Funciones puras, probadas con datos sintéticos. |
+| `features`, `train` (dispatcher), `config`, `tracking` | 92–97 % | Lógica de features, contrato de MLflow y configuración. |
+| `tracking_p1`, `tracking_p2`, `features_p2`, `features_p1`, `baseline_p2`, `data_validation`, `data_quality` | 47–71 % | Se prueban las funciones de cálculo; queda fuera la lectura de archivos y el `main`. |
+| `train_p1`, `train_p2`, `train_p3`, `register_p2`, `register_p3`, `dataset`, `baseline_p1`, `evaluate_p1`, `data_tracking`, `plots_p1` | 17–48 % | Se prueban las piezas que deciden el resultado (pipeline, semilla, split, etiqueta, métricas, linaje); el resto entrena con los datos completos, descarga archivos, dibuja gráficas o llama a un servidor de MLflow. |
+| `evaluate_p2`, `evaluate_peak_p1`, `register_p1` | 0 % | Scripts de reporte y registro que solo leen modelos y datos ya generados. |
+
+La cobertura baja se concentra en código que necesita los datos de MiBici o un servidor de
+MLflow, que no existen en CI. Las pruebas cubren la lógica de la que dependen los resultados:
+cómo se construyen las variables y la etiqueta, cómo se parte el tiempo, que el
+entrenamiento sea reproducible, cómo se evalúa y qué linaje se exige al registrar. El
+siguiente paso para subirla son pruebas de `evaluate_p2` y `register_p1` con modelos
+falsos, como las de `register_p2` y `register_p3`.
+
+![Cobertura final con make coverage](reports/figures/evidencia/cobertura_final.png)
 
 ## Buenas prácticas
 
@@ -1397,23 +1425,31 @@ _Pendiente._
     ├── config.py          <- Rutas, fechas, semilla y configuración de MLflow
     ├── dataset.py         <- Ingesta, manifiesto y verificación de datos
     ├── data_quality.py    <- Reporte de calidad de datos
+    ├── data_tracking.py   <- Manifiesto y datos de entrenamiento en MLflow
+    ├── data_validation.py <- Validación de datos con DeepChecks
     ├── features.py        <- Funciones de features comunes a P1, P2 y P3
     ├── features_p1.py     <- Dataset estación-hora de P1
     ├── features_p2.py     <- Dataset estación-hora de P2
     ├── features_p3.py     <- Perfiles de uso por estación de P3
-    ├── plots.py
     └── modeling
+        ├── train.py           <- Punto de entrada de entrenamiento del MLflow Project
         ├── tracking.py        <- Experimento y trazabilidad comunes de MLflow
         ├── tracking_p1.py     <- Parámetros de partición de P1
+        ├── tracking_p2.py     <- Trazabilidad de P2
         ├── splits_p1.py       <- Particiones cronológicas de P1
+        ├── splits_p2.py       <- Particiones cronológicas de P2
         ├── baseline_p1.py     <- Baseline estacional de P1
         ├── train_p1.py        <- Modelo de P1
+        ├── plots_p1.py        <- Gráficas de validación de P1
         ├── evaluate_p1.py     <- Evaluación final de P1
+        ├── evaluate_peak_p1.py <- Evaluación de horas pico de P1
+        ├── register_p1.py     <- Registro del modelo de P1 con alias champion
         ├── baseline_p2.py     <- Baseline de persistencia de P2
-        ├── train_p2.py        <- Modelo y ablaciones de P2
+        ├── train_p2.py        <- Familias de modelos y ablaciones de P2
+        ├── evaluate_p2.py     <- Evaluación final de P2
+        ├── register_p2.py     <- Registro del modelo de P2 con alias champion
         ├── train_p3.py        <- Adaptador train, baseline y candidatos de P3
-        ├── register_p3.py     <- Registro del modelo de P3 con alias champion
-        └── predict.py         <- Plantilla de inferencia
+        └── register_p3.py     <- Registro del modelo de P3 con alias champion
 ```
 
 --------
