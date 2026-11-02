@@ -1310,7 +1310,33 @@ hacer si reporta algo está en [Secret scanning](#secret-scanning).
 
 Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
 
-_Pendiente._
+`make coverage` corre la suite completa y mide qué líneas de `mi_bici/` ejecutan las
+pruebas:
+
+```bash
+make coverage
+```
+
+Con todos los PRs de esta actividad, la suite tiene 149 pruebas en 22 archivos: 144 pasan y
+5 se omiten en el entorno principal porque requieren DeepChecks (corren en `.venv-validation`
+y en el job `validation` de CI). La cobertura de `mi_bici/` pasó de **28 % a 39 %**.
+
+| Módulos | Cobertura | Por qué |
+| :--- | ---: | :--- |
+| `features_p3`, `splits_p1`, `splits_p2` | 100 % | Funciones puras, probadas con datos sintéticos. |
+| `features`, `train` (dispatcher), `config`, `tracking` | 92–97 % | Lógica de features, contrato de MLflow y configuración. |
+| `tracking_p1`, `tracking_p2`, `features_p2`, `features_p1`, `baseline_p2`, `data_validation`, `data_quality` | 47–71 % | Se prueban las funciones de cálculo; queda fuera la lectura de archivos y el `main`. |
+| `train_p1`, `train_p2`, `train_p3`, `register_p2`, `register_p3`, `dataset`, `baseline_p1`, `evaluate_p1`, `data_tracking`, `plots_p1` | 17–48 % | Se prueban las piezas que deciden el resultado (pipeline, semilla, split, etiqueta, métricas, linaje); el resto entrena con los datos completos, descarga archivos, dibuja gráficas o llama a un servidor de MLflow. |
+| `evaluate_p2`, `evaluate_peak_p1`, `register_p1`, `predict`, `plots` | 0 % | Scripts de reporte y registro que solo leen modelos y datos ya generados. |
+
+La cobertura baja se concentra en código que necesita los datos de MiBici o un servidor de
+MLflow, que no existen en CI. Las pruebas cubren la lógica de la que dependen los resultados:
+cómo se construyen las variables y la etiqueta, cómo se parte el tiempo, que el
+entrenamiento sea reproducible, cómo se evalúa y qué linaje se exige al registrar. El
+siguiente paso para subirla son pruebas de `evaluate_p2` y `register_p1` con modelos de
+juguete, como las de `register_p2` y `register_p3`.
+
+![Cobertura final con make coverage](reports/figures/evidencia/cobertura_final.png)
 
 ## Buenas prácticas
 
