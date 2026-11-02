@@ -102,6 +102,84 @@ def run_p1_required_validation(df: pd.DataFrame):
     return suite.run(dataset)
 
 
+def prepare_p1_drift_samples(
+    df: pd.DataFrame,
+    sample_size: int = 10_000,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Prepara muestras reproducibles de train y test para analizar drift."""
+    from mi_bici.config import RANDOM_STATE
+    from mi_bici.features_p1 import FEATURES
+    from mi_bici.modeling.splits_p1 import temporal_masks
+
+    if sample_size <= 0:
+        raise ValueError("sample_size debe ser mayor que cero")
+
+    columns = ["station_id", "hour", "trip_count", *FEATURES]
+    masks = temporal_masks(df["hour"])
+    samples = []
+
+    for name in ("train", "test"):
+        partition = df.loc[masks[name], columns]
+
+        if partition.empty:
+            raise ValueError(f"La partición {name} está vacía")
+
+        sample = partition.sample(
+            n=min(sample_size, len(partition)),
+            random_state=RANDOM_STATE,
+        ).reset_index(drop=True)
+
+        samples.append(sample)
+
+    return samples[0], samples[1]
+
+
+def run_p1_drift_validation(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+):
+    """Compara las distribuciones de predictores y demanda entre train y test."""
+    from deepchecks.tabular import Dataset, Suite
+    from deepchecks.tabular.checks import FeatureDrift, LabelDrift
+
+    from mi_bici.config import RANDOM_STATE
+    from mi_bici.features_p1 import FEATURES
+
+    datasets = []
+    for sample in (train, test):
+        datasets.append(
+            Dataset(
+                sample[FEATURES + ["trip_count"]],
+                label="trip_count",
+                label_type="regression",
+                features=FEATURES,
+                cat_features=["hour_of_day", "day_of_week", "is_weekend"],
+            )
+        )
+
+    suite = Suite(
+        "P1 drift: train vs test",
+        FeatureDrift(
+            n_top_columns=len(FEATURES),
+            n_samples=max(len(train), len(test)),
+            random_state=RANDOM_STATE,
+            ignore_na=True,
+        ).add_condition_drift_score_less_than(
+            max_allowed_categorical_score=0.2,
+            max_allowed_numeric_score=0.1,
+        ),
+        LabelDrift(
+            n_samples=max(len(train), len(test)),
+            random_state=RANDOM_STATE,
+        ),
+    )
+
+    return suite.run(
+        train_dataset=datasets[0],
+        test_dataset=datasets[1],
+    )
+
+
 def main() -> None:
     """Valida P1 y guarda el resumen estructural y el reporte DeepChecks."""
     from deepchecks.tabular import Dataset
@@ -163,6 +241,27 @@ def main() -> None:
 
     print(f"Resumen: {summary_path}")
     print(f"Reporte DeepChecks: {html_path}")
+
+    # Drift: comparación temporal sobre muestras reproducibles.
+    train_sample, test_sample = prepare_p1_drift_samples(df)
+    drift_result = run_p1_drift_validation(train_sample, test_sample)
+
+    not_ran = drift_result.get_not_ran_checks()
+    if not_ran:
+        raise RuntimeError(f"Hay checks de drift que no se ejecutaron: {not_ran}")
+
+    drift_path = REPORTS_DIR / "p1_drift.html"
+    with drift_path.open("w", encoding="utf-8") as output:
+        drift_result.save_as_html(
+            output,
+            as_widget=False,
+            connected=False,
+        )
+
+    print(f"Reporte de drift: {drift_path}")
+    for check in drift_result.results:
+        print(check.header)
+        print(check.value)
 
 
 if __name__ == "__main__":
