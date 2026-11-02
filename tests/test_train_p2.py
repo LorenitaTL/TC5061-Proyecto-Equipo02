@@ -148,3 +148,64 @@ def test_evaluate_model_returns_expected_metrics() -> None:
     assert metrics["recall"] == pytest.approx(1.0)
     assert metrics["f1"] == pytest.approx(1.0)
     assert metrics["roc_auc"] == pytest.approx(1.0)
+
+
+class FixedProbabilityModel:
+    """Modelo falso que ignora X y devuelve las probabilidades de riesgo indicadas.
+
+    predict_proba sigue el formato de scikit-learn: columna 0 sin riesgo (1 - p) y columna 1
+    con riesgo (p), que es la que usa evaluate_model.
+    """
+
+    def __init__(self, probabilities: list[float]):
+        self.probabilities = np.array(probabilities)
+
+    def predict_proba(self, X):
+        return np.column_stack([1 - self.probabilities, self.probabilities])
+
+
+def test_evaluate_model_matches_metrics_computed_by_hand() -> None:
+    """Con un acierto y un error por clase (TP=1, FP=1, FN=1, TN=1) todas valen 0.5."""
+    model = FixedProbabilityModel([0.9, 0.6, 0.4, 0.1])
+    X = pd.DataFrame({"feature": [1, 2, 3, 4]})
+    y = pd.Series([1, 0, 1, 0])
+
+    metrics = evaluate_model(model, X, y, "validation")
+
+    assert metrics["accuracy"] == pytest.approx(0.5)
+    assert metrics["precision"] == pytest.approx(0.5)
+    assert metrics["recall"] == pytest.approx(0.5)
+    assert metrics["f1"] == pytest.approx(0.5)
+    # Pares positivo-negativo bien ordenados: 3 de 4.
+    assert metrics["roc_auc"] == pytest.approx(0.75)
+
+
+def test_evaluate_model_counts_probability_of_one_half_as_risk() -> None:
+    """La clase se asigna con probabilidad >= 0.5, así que 0.5 exacto cuenta como riesgo."""
+    model = FixedProbabilityModel([0.5, 0.49])
+    X = pd.DataFrame({"feature": [1, 2]})
+    y = pd.Series([1, 0])
+
+    metrics = evaluate_model(model, X, y, "test")
+
+    assert metrics["recall"] == pytest.approx(1.0)
+    assert metrics["precision"] == pytest.approx(1.0)
+
+
+@pytest.mark.filterwarnings("ignore::sklearn.exceptions.UndefinedMetricWarning")
+def test_evaluate_model_without_positives_does_not_fail() -> None:
+    """Un conjunto sin horas de riesgo no rompe la evaluación: precision, recall y F1 valen 0.
+
+    ROC-AUC no está definido con una sola clase; scikit-learn devuelve nan y lo advierte, así
+    que no se fija su valor.
+    """
+    model = FixedProbabilityModel([0.7, 0.2, 0.1])
+    X = pd.DataFrame({"feature": [1, 2, 3]})
+    y = pd.Series([0, 0, 0])
+
+    metrics = evaluate_model(model, X, y, "test")
+
+    assert metrics["accuracy"] == pytest.approx(2 / 3)
+    assert metrics["precision"] == 0
+    assert metrics["recall"] == 0
+    assert metrics["f1"] == 0

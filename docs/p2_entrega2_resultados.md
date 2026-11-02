@@ -1,5 +1,14 @@
 # P2 — Resultados de la Entrega 2
 
+> **Nota:** este documento conserva los resultados de la Entrega 2. Después, siguiendo los
+> comentarios del tutor, P2 cambió: el baseline oficial es la regla de persistencia (la
+> regresión logística es una candidata más), la etiqueta usa `>` en lugar de `>=` (19.40 % de
+> positivos en train), la partición usa las mismas fechas de corte que P1, se comparan tres
+> familias de modelos y el modelo elegido es HistGradientBoosting. Los resultados vigentes
+> están en la sección
+> [P2 — Predicción de riesgo operacional](../README.md#p2--predicción-de-riesgo-operacional)
+> del README.
+
 ## Objetivo y protocolo
 
 Predecir el riesgo operacional por estación-hora en MiBici, identificando aquellas observaciones en las que el desbalance entre llegadas y salidas representa una situación de riesgo para la operación de la estación.
