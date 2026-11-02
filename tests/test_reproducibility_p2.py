@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 from sklearn.datasets import make_classification
 
+from mi_bici.config import RANDOM_STATE
 from mi_bici.modeling.train_p2 import build_pipeline, get_classifier
 
 
@@ -46,4 +47,31 @@ def test_p2_training_is_reproducible(model_family: str) -> None:
     np.testing.assert_array_equal(
         predictions_1,
         predictions_2,
+    )
+
+
+def test_random_forest_changes_with_another_seed() -> None:
+    """Caso de control: si otra semilla diera las mismas probabilidades, la prueba anterior no
+    demostraría que RANDOM_STATE es lo que hace reproducible el entrenamiento.
+
+    Se usa RandomForest porque su bootstrap depende de la semilla; la regresión logística y
+    HistGradientBoosting sin early stopping dan el mismo resultado con cualquier semilla.
+    """
+
+    X, y = make_classification(
+        n_samples=300,
+        n_features=8,
+        n_informative=5,
+        n_redundant=1,
+        random_state=123,
+    )
+
+    reference = build_pipeline(get_classifier("RandomForest")).fit(X, y)
+    other = build_pipeline(
+        get_classifier("RandomForest").set_params(random_state=RANDOM_STATE + 1)
+    ).fit(X, y)
+
+    assert not np.allclose(
+        reference.predict_proba(X)[:, 1],
+        other.predict_proba(X)[:, 1],
     )
