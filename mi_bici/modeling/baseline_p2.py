@@ -17,8 +17,8 @@ import typer
 from mi_bici.config import RISK_PERCENTILE
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
-from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END
-from mi_bici.modeling.tracking import configure_mlflow, log_traceability
+from mi_bici.modeling.tracking import configure_mlflow
+from mi_bici.modeling.tracking_p2 import log_p2_traceability
 from mi_bici.modeling.train_p2 import (
     create_risk_label,
     load_features,
@@ -29,12 +29,16 @@ app = typer.Typer()
 
 
 def persistence_prediction(df: pd.DataFrame, threshold: float) -> pd.Series:
-    """Predice Risk = 1 si el desbalance de la hora actual alcanza el umbral."""
-    return (df["imbalance_ratio"] >= threshold).astype(int)
+    """Predice Risk = 1 si el desbalance de la hora actual supera el umbral.
+
+    Usa la misma comparación estricta que ``create_risk_label``: con ``>=``, los empates en el
+    P80 contarían como riesgo en la predicción pero no en la etiqueta.
+    """
+    return (df["imbalance_ratio"] > threshold).astype(int)
 
 
 def persistence_metrics(df: pd.DataFrame, threshold: float) -> dict[str, float]:
-    """Calcula las mismas métricas que la regresión logística de P2."""
+    """Calcula las mismas métricas que los modelos candidatos de P2."""
     y_true = create_risk_label(df, threshold)
     y_pred = persistence_prediction(df, threshold)
 
@@ -71,15 +75,13 @@ def main(input_path: Path = DATASET_PATH) -> None:
     configure_mlflow()
 
     with mlflow.start_run(run_name="p2-baseline-persistencia-p80") as run:
-        log_traceability("P2")
+        # Registra también las fechas de corte y el percentil, igual que las candidatas.
+        log_p2_traceability(model_family="persistence", stage_of_work="baseline")
         mlflow.log_params(
             {
                 "model": "persistencia",
-                "rule": "imbalance_ratio >= train_risk_threshold",
-                "risk_percentile": RISK_PERCENTILE,
+                "rule": "imbalance_ratio > train_risk_threshold",
                 "prediction_horizon": "1h",
-                "train_end": str(TRAIN_END),
-                "validation_end": str(VALIDATION_END),
                 "data_start": df["hour"].min().isoformat(),
                 "data_end": df["hour"].max().isoformat(),
                 "data_file": input_path.name,

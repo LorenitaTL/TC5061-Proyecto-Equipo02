@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from mi_bici.modeling.baseline_p2 import persistence_metrics, persistence_prediction
+from mi_bici.modeling.train_p2 import create_risk_label
 
 THRESHOLD = 0.5
 
@@ -13,10 +14,19 @@ def make_df(current: list[float], target: list[float]) -> pd.DataFrame:
     return pd.DataFrame({"imbalance_ratio": current, "target_imbalance_ratio": target})
 
 
-def test_prediction_includes_threshold() -> None:
-    """Un desbalance igual al umbral se predice como riesgo."""
+def test_prediction_excludes_threshold() -> None:
+    """Un desbalance igual al umbral no se predice como riesgo, igual que en la etiqueta."""
     df = make_df([0.4, 0.5, 0.6], [0.0, 0.0, 0.0])
-    assert persistence_prediction(df, THRESHOLD).tolist() == [0, 1, 1]
+    assert persistence_prediction(df, THRESHOLD).tolist() == [0, 0, 1]
+
+
+def test_prediction_matches_label_rule_at_threshold() -> None:
+    """Con los mismos valores, la predicción y la etiqueta coinciden, incluso en el umbral."""
+    values = [0.4, 0.5, 0.6]
+    df = make_df(values, values)
+    assert (
+        persistence_prediction(df, THRESHOLD).tolist() == create_risk_label(df, THRESHOLD).tolist()
+    )
 
 
 def test_prediction_is_binary_and_keeps_index() -> None:
