@@ -69,7 +69,7 @@ from mi_bici.data_tracking import log_training_data
 from mi_bici.dataset import calculate_sha256
 from mi_bici.features_p2 import DATASET_PATH
 from mi_bici.modeling.splits_p2 import TRAIN_END, VALIDATION_END, temporal_masks
-from mi_bici.modeling.tracking import configure_mlflow
+from mi_bici.modeling.tracking import configure_mlflow, get_data_version, get_git_commit
 from mi_bici.modeling.tracking_p2 import log_p2_traceability
 
 app = typer.Typer()
@@ -773,6 +773,9 @@ def run_hyperparameter_search(
 
     features_data_version = calculate_sha256(input_path)
 
+    # Linaje real del código y de los datos, igual que log_traceability en los demás runs.
+    lineage_tags = {"git_commit": get_git_commit(), "data_version": get_data_version()}
+
     df = load_features(input_path)
 
     train, validation, test = temporal_split(df)
@@ -826,7 +829,7 @@ def run_hyperparameter_search(
                 "unit_of_analysis": "station-hour",
                 "features_data_version": features_data_version,
                 "team": "equipo02",
-                "git_commit": "32fb353",
+                **lineage_tags,
             }
         )
 
@@ -882,7 +885,7 @@ def run_hyperparameter_search(
                         "search_type": "nested",
                         "parent_run_id": parent_run.info.run_id,
                         "team": "equipo02",
-                        "git_commit": "32fb353",
+                        **lineage_tags,
                         "ablation": ablation,
                     }
                 )
