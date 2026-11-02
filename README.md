@@ -1011,6 +1011,20 @@ MlflowClient().set_registered_model_alias("<modelo>", "champion", "<versión>")
 Las pruebas viven en `tests/` y se corren con `make test`. Las capturas de evidencia se guardan
 en `reports/figures/evidencia/`.
 
+Todos los comandos se corren desde la raíz del repositorio con `.venv` activo. DeepChecks
+necesita versiones más antiguas de numpy, scikit-learn y pandas, así que corre en un entorno
+aparte, `.venv-validation`, que se crea una vez con `make create_validation_environment`. Los
+equivalentes sin `make` están en
+[Windows (without `make` or `uv`)](#windows-without-make-or-uv).
+
+| Comando | Qué hace |
+| :--- | :--- |
+| `make test` | Corre todas las pruebas de `tests/` con PyTest. |
+| `make coverage` | Corre las pruebas y reporta el % de cobertura de `mi_bici/` por módulo. |
+| `make validate-data` | Corre las suites de DeepChecks (integridad y drift) y genera los reportes en `reports/`. |
+| `make test-validation` | Corre `tests/test_data_validation.py` en `.venv-validation`. |
+| `make security` | Corre bandit sobre `mi_bici/` y pip-audit sobre las dependencias. |
+
 ### Reproducibilidad del entrenamiento
 
 #### P1
@@ -1185,7 +1199,15 @@ Cubren:
 
 Ejecución conjunta con reproducibilidad, desde el ambiente principal:
 
-    python -m pytest tests/test_reproducibility_p1.py tests/test_baseline_p1.py tests/test_evaluate_p1.py tests/test_data_quality.py -v
+    python -m pytest tests/test_reproducibility_p1.py \
+      tests/test_baseline_p1.py tests/test_evaluate_p1.py \
+      tests/test_data_quality.py -v
+
+En PowerShell:
+
+    python -m pytest tests/test_reproducibility_p1.py `
+      tests/test_baseline_p1.py tests/test_evaluate_p1.py `
+      tests/test_data_quality.py -v
 
 Resultado local: 16 pruebas aprobadas: 2 de reproducibilidad,
 8 de baseline/evaluación y 6 de correspondencia de estaciones.
@@ -1259,6 +1281,41 @@ python -m pytest tests/test_train_p2.py tests/test_register_p2.py -v
 ```
 
 ![Pruebas del entrenamiento y del registro de P2](reports/figures/evidencia/pytest_p2_entrenamiento.png)
+
+### Pruebas de P3 y de módulos comunes
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+Estas pruebas cubren P3 y el código que comparten las tres preguntas: la ingesta, las
+features comunes, el contrato de MLflow y el punto de entrada de entrenamiento. Usan datos
+sintéticos, archivos temporales y una base SQLite temporal de MLflow, sin los datos de
+MiBici ni un servidor. Las de reproducibilidad de P3 están en
+[Reproducibilidad del entrenamiento › P3](#p3).
+
+| Archivo | Caso normal | Caso límite |
+| :--- | :--- | :--- |
+| `test_features_p3.py` | Con una estación residencial y una laboral, el balance de flujo y los perfiles (balances entre semana, uso en fin de semana y volumen) salen como se esperan. | Una estación solo con llegadas no se pierde; las de poca actividad se excluyen; si falta un mes, falla en lugar de armar perfiles incompletos; se descartan coordenadas inválidas. |
+| `test_train_p3.py` | `resolve_config` usa el modelo de perfiles por defecto y convierte los parámetros; el nombre del run describe el modelo y las features. | Rechaza modelos o parámetros inválidos; el modelo de ubicación queda como baseline; con grupos bien separados, la estabilidad (ARI) es 1. |
+| `test_register_p3.py` | Acepta una candidata de P3 terminada y su linaje tiene el run de origen, el commit y la versión de datos. | Rechaza corridas fallidas, de otra pregunta o de tipo baseline. |
+| `test_features.py` | El rango de meses incluye ambos extremos; los viajes se cuentan en la hora en que ocurrieron; calendario laboral y de fin de semana. | Si falta un mes, falla; los rezagos siguen el tiempo de cada estación aunque las filas lleguen desordenadas. |
+| `test_dataset_pipeline.py` | La normalización conserva todos los viajes y el hash SHA-256 coincide con un valor conocido. | Marca capacidades inválidas y duraciones negativas. |
+| `test_download_security.py` | Las URLs del manifiesto pasan la validación. | Se rechazan otro esquema u otro dominio parecido al de MiBici, antes de llamar a curl y sin dejar archivos. |
+| `test_tracking.py` | `log_traceability` registra el contrato de tags; la búsqueda anidada registra las corridas hijas y la mejor. | Rechaza un `stage_of_work` desconocido; falla si no hay corridas hijas; sin git instalado, el error explica qué falta. |
+| `test_train_dispatch.py` | El dispatcher pasa el modelo y los parámetros extra al adaptador de cada pregunta. | Rechaza una pregunta desconocida, un parámetro sin valor, valores posicionales y un adaptador que no devuelve run. |
+| `test_features_p1.py` y `test_splits_p1.py` | La malla estación-hora, los rezagos y el calendario de P1; cada fecha cae en su partición. | Las horas sin viajes quedan en cero; los rezagos no mezclan estaciones; las particiones no se traslapan. |
+| `test_config.py` | Las rutas del proyecto quedan dentro de la raíz del repositorio. | — |
+
+```bash
+python -m pytest tests/test_features_p3.py tests/test_train_p3.py \
+  tests/test_register_p3.py tests/test_features.py \
+  tests/test_dataset_pipeline.py tests/test_download_security.py \
+  tests/test_tracking.py tests/test_train_dispatch.py \
+  tests/test_features_p1.py tests/test_splits_p1.py tests/test_config.py -v
+```
+
+En PowerShell, cambia `\` por `` ` `` al final de cada línea.
+
+![Pruebas de P3 y de módulos comunes](reports/figures/evidencia/pytest_p3_comunes.png)
 
 ### Seguridad
 
