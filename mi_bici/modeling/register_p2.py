@@ -91,7 +91,7 @@ def validate_source(run) -> None:
     if missing:
         raise ValueError(
             f"La corrida de origen no tiene linaje completo: falta {', '.join(missing)}. "
-            "Vuelve a entrenarla con log_p2_traceability."
+            "Vuelve a entrenarla con python -m mi_bici.modeling.train --question p2."
         )
 
 

@@ -562,7 +562,10 @@ champion
 
 La versión registrada corresponde a la candidata final de HistGradientBoosting.
 `register_p2` solo registra corridas que tengan `git_commit` y `data_version`, para que el
-linaje en el Registry quede completo.
+linaje en el Registry quede completo. La versión champion guarda como tags el run de origen,
+el commit, la versión de los datos y los hiperparámetros del modelo:
+
+![Linaje de la versión champion de P2 en el Model Registry](reports/figures/evidencia/mlflow_p2_champion_linaje.png)
 
 ### Reproducibilidad de P2
 
