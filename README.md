@@ -1432,6 +1432,147 @@ falsos, como las de `register_p2` y `register_p3`.
 
 ![Cobertura final con make coverage](reports/figures/evidencia/cobertura_final.png)
 
+## API REST y contenedor
+
+El modelo de riesgo de P2 (`mibici-equipo02-p2-riesgo`, alias `champion`) se sirve como una
+API REST con FastAPI, dentro de un contenedor OCI construido con Podman o Docker. El código
+está en `mi_bici/api/`:
+
+| Archivo | Contenido | Responsable |
+| :--- | :--- | :--- |
+| `predictor.py` | Interfaz entre la API y el modelo (`Predictor`, `Prediction`) y un modelo falso para pruebas | @LorenitaTL |
+| `settings.py` | Configuración por variables de entorno | @LorenitaTL |
+| `main.py` | Aplicación FastAPI: `GET /health` y `POST /predict` | @LorenitaTL, @MelizaMartinez98 |
+| `schemas.py` | Esquemas Pydantic de entrada y salida | @MelizaMartinez98 |
+| `model_loader.py` | Carga del modelo desde el Model Registry | @Eduardo-Valencia96 |
+
+### Contrato de la API
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+#### `GET /health`
+
+Indica si el servicio está arriba y si el modelo está cargado. Responde **200** aunque el
+modelo no se haya podido cargar, para que se pueda revisar el contenedor sin MLflow:
+
+```json
+{
+  "status": "ok",
+  "model_loaded": true,
+  "model_name": "mibici-equipo02-p2-riesgo",
+  "model_version": "3"
+}
+```
+
+#### `POST /predict`
+
+Predice si una estación tendrá desbalance alto en la siguiente hora (la etiqueta de riesgo
+de P2). El cuerpo es un objeto JSON con las 30 variables de `FEATURE_COLUMNS`
+(`mi_bici/modeling/train_p2.py`); todas son obligatorias y numéricas. El ejemplo es una
+fila real de `features_p2.parquet` (estación 10, 13 de noviembre de 2025 a las 12:00):
+
+```json
+{
+  "departures": 4.0,
+  "arrivals": 3.0,
+  "net_flow": 1.0,
+  "absolute_imbalance": 1.0,
+  "imbalance_ratio": 0.0667,
+  "capacity": 15,
+  "latitude": 20.6820,
+  "longitude": -103.3500,
+  "hour_of_day": 12,
+  "day_of_week": 3,
+  "is_weekend": 0,
+  "hour_sin": 0.0,
+  "hour_cos": -1.0,
+  "dow_sin": 0.4339,
+  "dow_cos": -0.9010,
+  "departures_lag_1h": 3.0,
+  "departures_lag_2h": 2.0,
+  "departures_lag_24h": 5.0,
+  "departures_rolling_3h": 2.3333,
+  "departures_rolling_24h": 1.9167,
+  "arrivals_lag_1h": 3.0,
+  "arrivals_lag_2h": 1.0,
+  "arrivals_lag_24h": 3.0,
+  "arrivals_rolling_3h": 1.6667,
+  "arrivals_rolling_24h": 2.1667,
+  "net_flow_lag_1h": 0.0,
+  "net_flow_lag_2h": 1.0,
+  "net_flow_lag_24h": 2.0,
+  "net_flow_rolling_3h": 0.6667,
+  "net_flow_rolling_24h": -0.25
+}
+```
+
+Respuesta **200** (los valores son ilustrativos):
+
+```json
+{
+  "risk_probability": 0.42,
+  "risk_class": 1,
+  "risk_label": "alto",
+  "threshold": 0.35,
+  "model_name": "mibici-equipo02-p2-riesgo",
+  "model_version": "3"
+}
+```
+
+| Campo | Tipo | Significado |
+| :--- | :--- | :--- |
+| `risk_probability` | número entre 0 y 1 | Probabilidad de desbalance alto en la siguiente hora |
+| `risk_class` | 0 o 1 | 1 si `risk_probability >= threshold` |
+| `risk_label` | `"alto"` o `"bajo"` | `risk_class` en texto |
+| `threshold` | número | Umbral de clasificación del modelo registrado (`classification_threshold`; 0.35 en el modelo final) |
+| `model_name`, `model_version` | texto | Modelo y versión que respondieron, resueltos desde el alias |
+
+Errores:
+
+| Código | Cuándo |
+| :--- | :--- |
+| 422 | Falta una variable, sobra una, o un valor no es numérico o está fuera de rango |
+| 503 | El modelo no está cargado (por ejemplo, MLflow no respondió al arrancar) |
+
+#### Interfaz con el modelo
+
+`POST /predict` no carga el modelo: recibe un objeto que cumple el protocolo `Predictor` de
+`mi_bici/api/predictor.py`. Le pasa un DataFrame con `FEATURE_COLUMNS` en ese orden y recibe
+una `Prediction(probability, risk_class)` por fila. El adaptador real (`model_loader.py`)
+y el modelo falso `FixedPredictor` cumplen el mismo protocolo, así que el endpoint y sus
+pruebas se pueden escribir antes de tener el modelo real. `check_feature_columns` rechaza
+un DataFrame con columnas de más, de menos o en otro orden.
+
+### Modelo y MLflow
+
+Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+### API REST
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+### Podman/Docker
+
+Responsable: [@clsrivas](https://github.com/clsrivas).
+
+_Pendiente._
+
+### Pruebas de la API
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+_Pendiente._
+
+### Despliegue
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+_Pendiente._
+
 ## Buenas prácticas
 
 - **Experimento único y runs con nombre descriptivo:** P1, P2 y P3 registran en
