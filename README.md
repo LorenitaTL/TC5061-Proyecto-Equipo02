@@ -1446,6 +1446,10 @@ está en `mi_bici/api/`:
 | `schemas.py` | Esquemas Pydantic de entrada y salida | @MelizaMartinez98 |
 | `model_loader.py` | Carga del modelo desde el Model Registry | @Eduardo-Valencia96 |
 
+FastAPI, Uvicorn, Pydantic y httpx (para `TestClient`) están fijados en `requirements.txt`,
+así que `make requirements` deja lista la API. El contenedor instala el mismo archivo, de modo
+que la imagen usa las mismas versiones con las que se entrena y se prueba.
+
 ### Contrato de la API
 
 Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
