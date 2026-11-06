@@ -1547,6 +1547,27 @@ y el modelo falso `FixedPredictor` cumplen el mismo protocolo, así que el endpo
 pruebas se pueden escribir antes de tener el modelo real. `check_feature_columns` rechaza
 un DataFrame con columnas de más, de menos o en otro orden.
 
+Al arrancar, `main.py` llama a `load_predictor(settings) -> Predictor` de `model_loader.py`.
+Si lanza una excepción, la API arranca sin modelo: `/health` responde `model_loaded: false`
+y los endpoints que usan la dependencia `get_predictor` responden 503.
+
+#### Configuración
+
+La API se configura con variables de entorno (`mi_bici/api/settings.py`); se leen al
+arrancar, no hay rutas ni URIs fijas en el código:
+
+| Variable | Por omisión | Uso |
+| :--- | :--- | :--- |
+| `MLFLOW_TRACKING_URI` | `sqlite:///<proyecto>/mlflow.db` (`mi_bici/config.py`) | Servidor o base de MLflow |
+| `MODEL_NAME` | `mibici-equipo02-p2-riesgo` | Modelo registrado |
+| `MODEL_ALIAS` | `champion` | Alias que se resuelve si no hay versión |
+| `MODEL_VERSION` | (vacía) | Versión fija; tiene prioridad sobre el alias |
+
+```bash
+uvicorn mi_bici.api.main:app --port 8000
+curl localhost:8000/health
+```
+
 ### Modelo y MLflow
 
 Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
