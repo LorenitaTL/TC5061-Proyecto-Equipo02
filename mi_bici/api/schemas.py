@@ -84,6 +84,7 @@ class PredictionRequest(BaseModel):
     net_flow_rolling_3h: float
     net_flow_rolling_24h: float
 
+
 class PredictionResponse(BaseModel):
     """Resultado de la predicción de riesgo para la siguiente hora."""
 
