@@ -1,25 +1,47 @@
-import pandas as pd
-
-from mi_bici.api.model_loader import load_p2_model
+from mi_bici.api.model_loader import build_features, load_p2_model
 from mi_bici.api.predictor import FEATURE_COLUMNS
-from mi_bici.config import PROCESSED_DATA_DIR
 
 
 def test_p2_model_serving_real_inference():
-    """Verifica que el modelo champion de P2 pueda cargarse y predecir."""
+    """Verifica el serving del modelo P2 con un caso sintético."""
 
-    # Datos reales de P2
-    path = PROCESSED_DATA_DIR / "features_p2.parquet"
+    # Caso de entrada sintético con las 30 features esperadas por P2.
+    data = {column: 0.0 for column in FEATURE_COLUMNS}
 
-    df = pd.read_parquet(path, columns=FEATURE_COLUMNS).dropna().head(1)
+    # Valores mínimos coherentes para algunas variables.
+    data.update(
+        {
+            "departures": 5.0,
+            "arrivals": 3.0,
+            "net_flow": 2.0,
+            "absolute_imbalance": 2.0,
+            "imbalance_ratio": 0.25,
+            "capacity": 20.0,
+            "latitude": 19.4326,
+            "longitude": -99.1332,
+            "hour_of_day": 12.0,
+            "day_of_week": 2.0,
+            "is_weekend": 0.0,
+            "hour_sin": 0.0,
+            "hour_cos": -1.0,
+            "dow_sin": 0.9749,
+            "dow_cos": -0.2225,
+        }
+    )
 
-    # Cargar modelo desde MLflow Model Registry
+    # E2: construir el DataFrame respetando exactamente el contrato de features.
+    features = build_features(data)
+
+    assert features.shape == (1, len(FEATURE_COLUMNS))
+    assert list(features.columns) == FEATURE_COLUMNS
+
+    # E1: cargar el modelo P2 desde MLflow Model Registry.
     predictor = load_p2_model()
 
-    # Ejecutar inferencia
-    predictions = predictor.predict(df)
+    # E3: ejecutar inferencia real.
+    predictions = predictor.predict(features)
 
-    # Validaciones del contrato
+    # Validaciones del contrato de serving.
     assert len(predictions) == 1
 
     prediction = predictions[0]
@@ -27,7 +49,7 @@ def test_p2_model_serving_real_inference():
     assert 0.0 <= prediction.probability <= 1.0
     assert prediction.risk_class in (0, 1)
 
-    # Verificar que el threshold utilizado sea el registrado
+    # El threshold debe corresponder al registrado para el modelo champion.
     assert predictor.threshold == 0.35
 
     print()
