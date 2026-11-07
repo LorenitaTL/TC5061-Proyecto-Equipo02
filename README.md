@@ -1578,7 +1578,37 @@ _Pendiente._
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-_Pendiente._
+`POST /predict` estima el riesgo de desbalance de una estación para la hora siguiente.
+La solicitud debe incluir las 30 variables descritas en el [contrato de la API](#post-predict).
+El ejemplo siguiente usa el JSON de muestra del esquema de entrada y lo envía a la API
+en ejecución.
+
+```python
+import httpx
+
+from mi_bici.api.schemas import PredictionRequest
+
+payload = PredictionRequest.model_json_schema()["examples"][0]
+response = httpx.post("http://localhost:8000/predict", json=payload, timeout=10)
+response.raise_for_status()
+print(response.json())
+```
+
+Ejemplo ilustrativo de una respuesta `200 OK`:
+
+```json
+{
+  "risk_probability": 0.42,
+  "risk_class": 1,
+  "risk_label": "alto",
+  "threshold": 0.35,
+  "model_name": "mibici-equipo02-p2-riesgo",
+  "model_version": "3"
+}
+```
+
+La API devuelve `422` si la solicitud es inválida y `503` si el predictor no está disponible.
+Los valores de la respuesta dependen de los datos enviados y del modelo cargado.
 
 ### Podman/Docker
 
