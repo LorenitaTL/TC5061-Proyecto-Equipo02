@@ -1,6 +1,6 @@
 """Esquemas Pydantic de entrada y salida de POST /predict."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -83,3 +83,16 @@ class PredictionRequest(BaseModel):
     net_flow_lag_24h: float
     net_flow_rolling_3h: float
     net_flow_rolling_24h: float
+
+
+class PredictionResponse(BaseModel):
+    """Resultado de la predicción de riesgo para la siguiente hora."""
+
+    model_config = ConfigDict(strict=True, allow_inf_nan=False)
+
+    risk_probability: Annotated[float, Field(ge=0, le=1)]
+    risk_class: Annotated[int, Field(ge=0, le=1)]
+    risk_label: Literal["alto", "bajo"]
+    threshold: Annotated[float, Field(ge=0, le=1)]
+    model_name: str
+    model_version: str
