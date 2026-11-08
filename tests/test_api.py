@@ -34,6 +34,10 @@ class RecordingPredictor:
 # --- Flujo completo ----------------------------------------------------------------------
 
 
+def test_el_ejemplo_del_contrato_sigue_el_orden_del_entrenamiento(valid_payload):
+    assert list(valid_payload) == FEATURE_COLUMNS
+
+
 def test_health_y_predict_reportan_el_mismo_modelo(api_client, valid_payload):
     client = api_client(FixedPredictor(model_name=MODEL_NAME, model_version="3"))
 

@@ -3,19 +3,25 @@
 
 Ninguna necesita MLflow, ``mlflow.db`` ni datos en ``data/``: la app se crea con un
 modelo falso (``FixedPredictor`` u otro que cumpla ``Predictor``) o sin modelo.
+
+Este archivo no importa FastAPI ni ``mi_bici.api`` al cargarse: pytest lo carga para
+cualquier prueba de ``tests/``, también en el entorno de DeepChecks
+(``requirements-validation.txt``), que no instala las dependencias de serving.
 """
+
+from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
+from typing import TYPE_CHECKING
 
-from fastapi.testclient import TestClient
 import pytest
 
-from mi_bici.api.main import create_app
-from mi_bici.api.predictor import FEATURE_COLUMNS, Predictor
-from mi_bici.api.settings import Settings
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
-API_SETTINGS = Settings(mlflow_tracking_uri="sqlite:///:memory:")
+    from mi_bici.api.predictor import Predictor
+    from mi_bici.api.settings import Settings
 
 # Ejemplo del contrato (README, «POST /predict»): estación 10, 13 de noviembre de 2025, 12:00.
 VALID_PAYLOAD = {
@@ -50,7 +56,6 @@ VALID_PAYLOAD = {
     "net_flow_rolling_3h": 0.6667,
     "net_flow_rolling_24h": -0.25,
 }
-assert list(VALID_PAYLOAD) == FEATURE_COLUMNS, "El ejemplo debe seguir FEATURE_COLUMNS"
 
 
 @pytest.fixture
@@ -72,11 +77,18 @@ def api_client() -> Iterator[Callable[[Predictor | None], TestClient]]:
     modelo) y se cierra al terminar la prueba.
     """
 
+    from fastapi.testclient import TestClient
+
+    from mi_bici.api.main import create_app
+    from mi_bici.api.settings import Settings
+
+    settings = Settings(mlflow_tracking_uri="sqlite:///:memory:")
+
     with ExitStack() as stack:
 
         def make(predictor: Predictor | None) -> TestClient:
             loader = _no_model if predictor is None else (lambda settings: predictor)
-            app = create_app(API_SETTINGS, loader=loader)
+            app = create_app(settings, loader=loader)
             return stack.enter_context(TestClient(app))
 
         yield make
