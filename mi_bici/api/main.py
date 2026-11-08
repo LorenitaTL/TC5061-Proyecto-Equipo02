@@ -8,12 +8,15 @@ Se arranca con ``uvicorn mi_bici.api.main:app``. Al arrancar se lee la configura
 
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from loguru import logger
+import pandas as pd
 from pydantic import BaseModel
 
-from mi_bici.api.predictor import Predictor
+from mi_bici.api.predictor import FEATURE_COLUMNS, Predictor
+from mi_bici.api.schemas import PredictionRequest, PredictionResponse
 from mi_bici.api.settings import Settings
 
 PredictorLoader = Callable[[Settings], Predictor]
@@ -82,6 +85,23 @@ def create_app(
         return HealthResponse(
             status="ok",
             model_loaded=True,
+            model_name=predictor.model_name,
+            model_version=predictor.model_version,
+        )
+
+    @app.post("/predict", response_model=PredictionResponse)
+    def predict(
+        payload: PredictionRequest,
+        predictor: Annotated[Predictor, Depends(get_predictor)],
+    ) -> PredictionResponse:
+        features = pd.DataFrame([payload.model_dump()], columns=FEATURE_COLUMNS)
+        prediction = predictor.predict(features)[0]
+
+        return PredictionResponse(
+            risk_probability=prediction.probability,
+            risk_class=prediction.risk_class,
+            risk_label="alto" if prediction.risk_class == 1 else "bajo",
+            threshold=predictor.threshold,
             model_name=predictor.model_name,
             model_version=predictor.model_version,
         )
