@@ -1,4 +1,4 @@
-﻿from typing import ClassVar
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -84,9 +84,7 @@ def test_load_p2_model_resolves_alias_and_threshold(monkeypatch):
     predictor = model_loader.load_p2_model()
 
     assert configured_uris == [tracking_uri]
-    assert loaded_uris == [
-        "models:/mibici-equipo02-p2-riesgo@champion"
-    ]
+    assert loaded_uris == ["models:/mibici-equipo02-p2-riesgo@champion"]
 
     assert predictor.model_name == "mibici-equipo02-p2-riesgo"
     assert predictor.model_version == "5"
