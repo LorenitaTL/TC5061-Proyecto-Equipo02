@@ -1614,7 +1614,23 @@ Los valores de la respuesta dependen de los datos enviados y del modelo cargado.
 
 Responsable: [@clsrivas](https://github.com/clsrivas).
 
-_Pendiente._
+La imagen se define en el `Containerfile` de la raíz. `.containerignore` (y `.dockerignore`,
+que apunta al mismo archivo) deja fuera del contexto todo salvo `requirements.txt`,
+`pyproject.toml`, `README.md`, `LICENSE` y `mi_bici/`.
+
+```bash
+podman build -t mibici-api .
+podman run --rm -p 8000:8000 mibici-api
+curl localhost:8000/health
+```
+
+Con Docker los comandos son los mismos (`docker build`, `docker run`).
+
+**Integración continua.** El workflow `container` (`.github/workflows/container.yml`) corre
+en cada PR y en cada push a `main`: construye la imagen con Podman, arranca el contenedor
+y verifica que `GET /health` responda 200. No usa MLflow, así que la API arranca sin modelo
+(`model_loaded: false`). Si el `Containerfile` o el arranque de la API se rompen, el job
+falla.
 
 ### Pruebas de la API
 
