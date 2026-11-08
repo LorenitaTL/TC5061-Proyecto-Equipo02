@@ -1,0 +1,13 @@
+# Contexto de build del Containerfile: solo entran requirements.txt, pyproject.toml,
+# README.md, LICENSE y mi_bici/. Todo lo demás se excluye.
+*
+!requirements.txt
+!pyproject.toml
+!README.md
+!LICENSE
+!mi_bici/
+
+# Aun dentro de mi_bici/
+**/__pycache__
+**/*.py[cod]
+**/.DS_Store
