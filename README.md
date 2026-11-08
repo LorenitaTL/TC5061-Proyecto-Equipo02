@@ -1632,6 +1632,11 @@ y verifica que `GET /health` responda 200. No usa MLflow, así que la API arranc
 (`model_loaded: false`). Si el `Containerfile` o el arranque de la API se rompen, el job
 falla.
 
+Evidencia: [corrida del workflow `container` sobre `main`](https://github.com/LorenitaTL/TC5061-Proyecto-Equipo02/actions/runs/42529279656),
+en verde; `GET /health` respondió 200 a los ~6 s de arrancar el contenedor.
+
+![Workflow container en verde](reports/figures/evidencia/ci_contenedor.png)
+
 ### Pruebas de la API
 
 Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
