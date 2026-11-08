@@ -27,17 +27,24 @@ jobs:
       - name: Start container
         run: podman run -d --name "$CONTAINER" -p 8000:8000 "$IMAGE"
 
-      # Retries while uvicorn starts; fails if /health never returns 200
+      # Waits up to 3 minutes for uvicorn; fails if the container stops or /health never
+      # returns 200. Uses 127.0.0.1 because "localhost" may resolve to ::1 first.
       - name: Check GET /health
         run: |
-          curl --fail --silent --show-error \
-            --retry 30 --retry-delay 2 --retry-all-errors \
-            http://localhost:8000/health
-          echo
+          for i in $(seq 1 90); do
+            if [ "$(podman inspect -f '{{.State.Running}}' "$CONTAINER")" != "true" ]; then
+              echo "The container stopped"; exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8000/health; then
+              echo; echo "GET /health returned 200 after ~$((i * 2)) s"; exit 0
+            fi
+            sleep 2
+          done
+          echo "GET /health did not return 200 in 180 s"; exit 1
 
       - name: Container logs
         if: always()
-        run: podman logs "$CONTAINER" || true
+        run: podman logs --timestamps "$CONTAINER" || true
 
       - name: Stop container
         if: always()
