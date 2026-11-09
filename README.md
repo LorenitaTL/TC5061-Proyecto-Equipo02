@@ -1802,13 +1802,90 @@ en verde; `GET /health` respondió 200 a los ~6 s de arrancar el contenedor.
 
 Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
 
-_Pendiente._
+Las pruebas de la API no necesitan MLflow, `mlflow.db` ni datos en `data/`: la app se crea con
+`create_app(loader=...)` y recibe un modelo falso (`FixedPredictor` u otro que cumpla
+`Predictor`) en lugar del modelo registrado. Por eso corren igual en local y en CI.
+
+| Archivo | Qué prueba | Pruebas |
+| :--- | :--- | ---: |
+| `tests/test_api.py` | Flujo HTTP completo con `TestClient`: `/health` y `/predict` reportan el mismo modelo, respuesta válida con el contrato, riesgo bajo bajo el umbral, la fila llega al modelo en el orden del entrenamiento, 422 si falta o sobra una variable o un valor no es numérico, 503 sin modelo | 9 |
+| `tests/test_api_health.py` | Configuración por variables de entorno (`settings.py`), `GET /health` con y sin modelo, arranque sin modelo cuando el loader falla y dependencia `get_predictor` | 14 |
+| `tests/test_api_predictor.py` | Interfaz con el modelo: `FEATURE_COLUMNS` igual al entrenamiento de P2, `check_feature_columns` y `FixedPredictor` | 7 |
+| `tests/test_api_validation.py` | Validación de los esquemas Pydantic en `POST /predict`: respuesta del contrato, `hour_of_day` con tipo incorrecto o fuera de rango y campo obligatorio faltante | 4 |
+| `tests/test_model_loader.py` | Carga desde el Model Registry con un `MlflowClient` falso: alias, versión fija, umbral del run, orden de columnas y forma de la salida (ver [Modelo y MLflow](#modelo-y-mlflow)) | 5 |
+
+```bash
+make test                                                     # toda la suite
+python -m pytest tests/test_api*.py tests/test_model_loader.py # solo la API
+python -m pytest tests/test_api*.py tests/test_model_loader.py --cov=mi_bici.api --cov-report=term-missing
+```
+
+Con la última instrucción, la cobertura de `mi_bici/api/` es de 99 %. En CI, la suite completa
+corre en el hook `pytest` del workflow `pre-commit` (Linux) y en su job `tests` (Windows y
+macOS); el workflow `container` comprueba además que la imagen construya y que `/health`
+responda dentro del contenedor (ver [Prueba del servicio en el
+contenedor](#prueba-del-servicio-en-el-contenedor)).
 
 ### Despliegue
 
 Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
 
-_Pendiente._
+**Estrategia elegida: inferencia en tiempo real.** El modelo de P2 responde una pregunta
+operativa: si una estación tendrá desbalance alto en la siguiente hora, para decidir a tiempo
+dónde rebalancear. Sus variables de entrada (salidas y llegadas recientes, rezagos de 1, 2 y
+24 horas y promedios de 3 y 24 horas) cambian cada hora, y la predicción solo sirve si llega
+antes de que termine esa hora. Por eso se sirve como un servicio HTTP que responde cada
+petición al momento (`POST /predict`), en lugar de un proceso por lotes. La inferencia por
+lotes (calcular cada hora el riesgo de todas las estaciones y guardarlo en una tabla para un
+tablero) sería una alternativa válida que podría reutilizar el mismo modelo, pero no se
+implementó.
+
+**Cómo llega el modelo al contenedor.** De las dos opciones posibles (apuntar
+`MLFLOW_TRACKING_URI` al Model Registry o empaquetar en la imagen el modelo descargado), se
+eligió la primera. La imagen `mibici-api` (`Containerfile`: Python 3.12 slim, usuario sin
+privilegios, Uvicorn en el puerto 8000) no contiene el modelo: lo resuelve del Registry al
+arrancar, con el alias `champion`. Así la imagen y el modelo se versionan por separado: la
+imagen cambia cuando cambia el código de la API, y el modelo cuando se mueve el alias en
+MLflow, sin reconstruir la imagen. La desventaja es que el contenedor necesita acceso al
+Registry al arrancar; si no lo tiene, arranca sin modelo y `/predict` responde 503.
+
+**Configuración.** Todo se pasa por variables de entorno (ver
+[Configuración](#configuración)): `MLFLOW_TRACKING_URI` indica dónde está el Registry y
+`MODEL_NAME`, `MODEL_ALIAS` o `MODEL_VERSION` qué modelo servir. La misma imagen sirve para
+cualquier entorno; no hay que reconstruirla para cambiar de modelo o de servidor de MLflow.
+
+**Entorno actual (local).** El servicio se ejecuta con Podman o Docker en la máquina de cada
+integrante, montando el `mlflow.db` y `mlartifacts/` locales (`make docker-run`, ver
+[Podman/Docker](#podmandocker)). Por eso la versión que responde depende del registro de
+quien lo ejecuta: en este README aparecen la versión 5 (registro de Eduardo, en
+[Modelo y MLflow](#modelo-y-mlflow)) y la 1 (registro local de la prueba en el contenedor),
+y los ejemplos del contrato usan valores ilustrativos. `/health` y cada respuesta de
+`/predict` indican siempre el modelo y la versión que respondieron.
+
+**Estrategia para un entorno compartido.** Lo que cambiaría para pasar de local a un
+servidor:
+
+1. **Registry compartido.** Un servidor de MLflow con base de datos y artefactos en un
+   almacenamiento común, en lugar del `mlflow.db` de cada persona. El contenedor solo
+   cambia `MLFLOW_TRACKING_URI=http://<servidor-mlflow>`; no hace falta montar volúmenes.
+2. **Publicación de la imagen.** El workflow `container` ya construye la imagen y prueba
+   `/health` en cada PR y en cada push a `main`. El siguiente paso sería publicarla en un
+   registro de contenedores (por ejemplo GHCR) con la etiqueta del commit. No está
+   implementado.
+3. **Promoción y reversión del modelo.** Para promover una versión nueva se mueve el alias
+   `champion` en el Registry (ver
+   [Registrar el modelo elegido](#5-registrar-el-modelo-elegido-de-cada-pregunta)) y se
+   reinicia el contenedor: el modelo se carga una sola vez, al arrancar. Para revertir, se
+   devuelve el alias a la versión anterior y se reinicia. `MODEL_VERSION` permite fijar una
+   versión concreta sin tocar el alias, por ejemplo para comparar dos versiones en paralelo.
+4. **Salud del servicio.** `GET /health` responde 200 aunque el modelo no haya cargado, para
+   distinguir «el contenedor está arriba» de «el modelo está listo». Un orquestador debe
+   usar el código 200 como prueba de vida y `model_loaded: true` como condición para enviar
+   tráfico; si el modelo no carga, `/predict` responde 503 en lugar de predecir con un
+   modelo equivocado.
+5. **Escalamiento.** El servicio no guarda estado entre peticiones, así que se pueden
+   levantar varias réplicas detrás de un balanceador; cada una carga el mismo modelo del
+   Registry al arrancar.
 
 ## Buenas prácticas
 
