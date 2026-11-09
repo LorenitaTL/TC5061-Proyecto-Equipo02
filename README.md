@@ -1664,6 +1664,38 @@ Para usar un servidor de MLflow en el host en lugar del archivo, apunta a
 `make docker-run CONTAINER_MLFLOW_URI=http://host.containers.internal:5001`. Los artefactos
 se siguen leyendo del volumen de `mlartifacts/`, porque sus rutas en el registro son locales.
 
+#### Prueba del servicio en el contenedor
+
+Con el contenedor corriendo (`make docker-run`) y P2 registrado como `champion`, se envía el
+ejemplo de [`POST /predict`](#post-predict), guardado en
+`references/api_predict_example.json`:
+
+```bash
+curl -s localhost:8000/health
+curl -s -X POST localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d @references/api_predict_example.json | python -m json.tool
+```
+
+Respuesta del contenedor con la versión 1 del modelo registrada localmente:
+
+```json
+{
+    "risk_probability": 0.4790725575816363,
+    "risk_class": 1,
+    "risk_label": "alto",
+    "threshold": 0.35,
+    "model_name": "mibici-equipo02-p2-riesgo",
+    "model_version": "1"
+}
+```
+
+La probabilidad (0.479) supera el umbral de 0.35, así que la estación se clasifica con riesgo
+`alto` de desbalance en la siguiente hora. La versión y la probabilidad dependen del modelo
+registrado en el `mlflow.db` de quien ejecuta la prueba.
+
+![POST /predict desde el contenedor](reports/figures/evidencia/api_contenedor.png)
+
 **Integración continua.** El workflow `container` (`.github/workflows/container.yml`) corre
 en cada PR y en cada push a `main`: construye la imagen con Podman, arranca el contenedor
 y verifica que `GET /health` responda 200. No usa MLflow, así que la API arranca sin modelo
