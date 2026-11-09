@@ -125,6 +125,56 @@ data: requirements
 
 
 #################################################################################
+# API CONTAINER                                                                 #
+#################################################################################
+
+# Podman by default; use `make docker-run CONTAINER_ENGINE=docker` for Docker
+CONTAINER_ENGINE ?= podman
+IMAGE_NAME ?= mibici-api
+CONTAINER_NAME ?= mibici-api
+API_PORT ?= 8000
+
+# The model reaches the container through the local MLflow store: mlflow.db is mounted at
+# /app/mlflow.db and mlartifacts/ at the same absolute path it has on the host, because
+# mlflow.db stores absolute artifact paths (file:///.../mlartifacts).
+MLFLOW_DB ?= $(CURDIR)/mlflow.db
+MLFLOW_ARTIFACTS ?= $(CURDIR)/mlartifacts
+CONTAINER_MLFLOW_URI ?= sqlite:////app/mlflow.db
+
+## Build the API image
+.PHONY: docker-build
+docker-build:
+	$(CONTAINER_ENGINE) build -t $(IMAGE_NAME) .
+
+## Run the API container in the background (model from the local MLflow store)
+.PHONY: docker-run
+docker-run:
+	@if [ -f "$(MLFLOW_DB)" ] && [ -d "$(MLFLOW_ARTIFACTS)" ]; then \
+		MOUNTS='-v "$(MLFLOW_DB):/app/mlflow.db" -v "$(MLFLOW_ARTIFACTS):$(MLFLOW_ARTIFACTS)"'; \
+	else \
+		echo "Warning: $(MLFLOW_DB) or $(MLFLOW_ARTIFACTS) not found; the API starts without a model."; \
+		MOUNTS=''; \
+	fi; \
+	CMD="$(CONTAINER_ENGINE) run -d --rm --name $(CONTAINER_NAME) -p $(API_PORT):8000 \
+		$$MOUNTS \
+		-e MLFLOW_TRACKING_URI=$(CONTAINER_MLFLOW_URI) \
+		-e MODEL_NAME -e MODEL_ALIAS -e MODEL_VERSION \
+		$(IMAGE_NAME)"; \
+	echo $$CMD; eval $$CMD
+	@echo "API on http://localhost:$(API_PORT) (logs: make docker-logs, stop: make docker-stop)"
+
+## Show the API container logs
+.PHONY: docker-logs
+docker-logs:
+	$(CONTAINER_ENGINE) logs -f $(CONTAINER_NAME)
+
+## Stop the API container
+.PHONY: docker-stop
+docker-stop:
+	$(CONTAINER_ENGINE) stop $(CONTAINER_NAME)
+
+
+#################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
 
