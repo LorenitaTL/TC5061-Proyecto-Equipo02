@@ -125,7 +125,7 @@ def test_sin_settings_la_app_lee_el_entorno(monkeypatch):
 
 
 def test_loader_por_omision_falla_sin_romper_el_arranque():
-    # model_loader.py aún no implementa load_predictor (E1): la API debe arrancar igual.
+    # Con sqlite en memoria no hay modelo registrado: load_predictor falla y la API arranca igual.
     with client_for(create_app(SETTINGS)) as client:
         response = client.get("/health")
 
