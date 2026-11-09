@@ -1572,7 +1572,98 @@ curl localhost:8000/health
 
 Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
 
-_Pendiente._
+El servicio utiliza el modelo de **clasificación de riesgo operacional de P2**, desarrollado para identificar situaciones de riesgo en la operación de las estaciones de MiBici.
+
+### Modelo utilizado
+
+- **Modelo:** `mibici-equipo02-p2-riesgo`
+- **Tipo:** Regresión Logística
+- **Problema:** Clasificación binaria de riesgo operacional
+- **Versión registrada:** `5`
+- **Alias:** `champion`
+- **Número de variables de entrada:** `30`
+- **Umbral de clasificación:** `0.35`
+
+El modelo utiliza las variables generadas por el pipeline de características de P2, incluyendo información de demanda, capacidad de las estaciones, flujo neto, variables temporales y características históricas (*lags* y *rolling windows*).
+
+### MLflow Model Registry
+
+El modelo se encuentra registrado en **MLflow Model Registry** y se recupera mediante el alias `champion`. Esto permite que la API no dependa de una copia local del archivo del modelo y facilita actualizar la versión utilizada por el servicio sin modificar el código de inferencia.
+
+La URI utilizada para recuperar el modelo es:
+
+```text
+models:/mibici-equipo02-p2-riesgo@champion
+```
+
+El servicio obtiene la versión correspondiente al alias y carga el modelo mediante MLflow:
+
+```text
+MLflow Model Registry
+        │
+        ▼
+mibici-equipo02-p2-riesgo
+        │
+        └── champion → versión 5
+                         │
+                         ▼
+                    Predictor P2
+                         │
+                         ▼
+                    FastAPI /predict
+```
+
+### Configuración
+
+La configuración del modelo se realiza mediante las variables de configuración de la aplicación:
+
+```text
+MLFLOW_TRACKING_URI
+MODEL_NAME
+MODEL_ALIAS
+MODEL_VERSION
+```
+
+Cuando se utiliza el alias `champion`, la aplicación resuelve automáticamente la versión registrada en MLflow.
+
+### Validación del modelo
+
+Se verificó que:
+
+- El modelo puede recuperarse correctamente desde MLflow.
+- El alias `champion` apunta a la versión esperada.
+- El predictor conserva las **30 variables** requeridas por el modelo P2.
+- El umbral de clasificación se recupera correctamente desde MLflow.
+- La inferencia realizada mediante el predictor produce la misma probabilidad que la inferencia directa del modelo registrado.
+- Las pruebas automatizadas del cargador del modelo fueron ejecutadas correctamente.
+
+Como evidencia de la recuperación e inferencia se incluye:
+
+```text
+reports/figures/evidencia/e4_model_registry.png
+reports/figures/evidencia/e2_e3_inferencia_fila_real.png
+```
+
+### Pruebas
+
+La integración del cargador de MLflow cuenta con pruebas automatizadas para verificar:
+
+1. La construcción correcta del vector de características P2.
+2. La resolución del modelo mediante el alias `champion`.
+3. La recuperación del umbral de clasificación.
+4. La generación de probabilidades y clasificación de riesgo.
+
+Las pruebas del proyecto se ejecutan mediante:
+
+```bash
+pytest
+```
+
+y las verificaciones de calidad mediante:
+
+```bash
+pre-commit run --all-files
+```
 
 ### API REST
 
