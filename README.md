@@ -1626,6 +1626,44 @@ curl localhost:8000/health
 
 Con Docker los comandos son los mismos (`docker build`, `docker run`).
 
+#### Ejecutar con el modelo del Model Registry
+
+`mlflow.db` y `mlartifacts/` no entran en la imagen. El modelo llega al contenedor montando el
+store local de MLflow como volumen:
+
+```bash
+make docker-build                          # podman build -t mibici-api .
+make docker-run                            # arranca en segundo plano en el puerto 8000
+curl localhost:8000/health                 # "model_loaded": true
+make docker-logs                           # logs del contenedor
+make docker-stop                           # lo detiene (se elimina al detenerse)
+```
+
+`make docker-run` monta:
+
+| Host | Contenedor | Por qué |
+| :--- | :--- | :--- |
+| `mlflow.db` | `/app/mlflow.db` | Backend del Model Registry (`MLFLOW_TRACKING_URI=sqlite:////app/mlflow.db`) |
+| `mlartifacts/` | la misma ruta absoluta del host | `mlflow.db` guarda las rutas de los artefactos como `file:///<ruta del repo>/mlartifacts/...`; montarlas en la misma ruta evita reescribirlas |
+
+Requiere haber entrenado y registrado P2 en el `mlflow.db` local (ver
+[Registrar el modelo elegido](#5-registrar-el-modelo-elegido-de-cada-pregunta)). Si
+`mlflow.db` o `mlartifacts/` no existen, el target avisa y arranca la API sin modelo.
+
+Variables:
+
+| Variable | Valor por omisión | Uso |
+| :--- | :--- | :--- |
+| `CONTAINER_ENGINE` | `podman` | `make docker-run CONTAINER_ENGINE=docker` para usar Docker |
+| `API_PORT` | `8000` | Puerto del host |
+| `CONTAINER_MLFLOW_URI` | `sqlite:////app/mlflow.db` | `MLFLOW_TRACKING_URI` dentro del contenedor |
+| `MODEL_NAME`, `MODEL_ALIAS`, `MODEL_VERSION` | los de `settings.py` | Se pasan al contenedor si están definidas en el entorno, p. ej. `MODEL_VERSION=3 make docker-run` |
+
+Para usar un servidor de MLflow en el host en lugar del archivo, apunta a
+`host.containers.internal` (Podman) o `host.docker.internal` (Docker), p. ej.
+`make docker-run CONTAINER_MLFLOW_URI=http://host.containers.internal:5001`. Los artefactos
+se siguen leyendo del volumen de `mlartifacts/`, porque sus rutas en el registro son locales.
+
 **Integración continua.** El workflow `container` (`.github/workflows/container.yml`) corre
 en cada PR y en cada push a `main`: construye la imagen con Podman, arranca el contenedor
 y verifica que `GET /health` responda 200. No usa MLflow, así que la API arranca sin modelo
