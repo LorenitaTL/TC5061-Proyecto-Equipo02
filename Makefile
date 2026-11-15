@@ -124,6 +124,13 @@ data: requirements
 	$(PYTHON_INTERPRETER) -m mi_bici.dataset main
 
 
+## P2: build the June A/B set and the Evidently drift and quality report
+.PHONY: drift-p2
+drift-p2:
+	$(PYTHON_INTERPRETER) -m mi_bici.monitoring.prepare_p2 --input data/processed/features_p2.parquet
+	$(PYTHON_INTERPRETER) -m mi_bici.monitoring.drift_p2
+
+
 #################################################################################
 # API CONTAINER                                                                 #
 #################################################################################
