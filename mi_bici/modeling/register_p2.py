@@ -1,8 +1,12 @@
-"""Registra el modelo elegido de P2, documenta su linaje y verifica el alias champion.
+"""Registra el modelo elegido de P2, documenta su linaje y verifica el alias asignado.
 
 Uso::
 
     python -m mi_bici.modeling.register_p2 --run-id <RUN_ID>
+    python -m mi_bici.modeling.register_p2 --run-id <RUN_ID_B> --alias challenger
+
+Sin ``--alias`` la versión recibe ``champion`` y pasa a ser la que sirve la API. Una candidata
+para A/B testing se registra con ``--alias challenger`` para no mover ``champion``.
 
 El run de origen debe ser una corrida candidata de P2 terminada, con su commit de Git y la
 versión de los datos, para que la versión registrada quede ligada al código y a los datos que
@@ -303,7 +307,7 @@ def main(
     typer.echo(f"OK: alias {alias} apunta a versión {version}.")
 
     # ---------------------------------------------------------
-    # 10. Verificar carga mediante alias champion
+    # 10. Verificar carga mediante el alias asignado
     # ---------------------------------------------------------
 
     alias_uri = f"models:/{name}@{alias}"

@@ -567,6 +567,36 @@ el commit, la versión de los datos y los hiperparámetros del modelo:
 
 ![Linaje de la versión champion de P2 en el Model Registry](reports/figures/evidencia/mlflow_p2_champion_linaje.png)
 
+#### Candidata B para el A/B testing
+
+Para comparar contra la versión vigente (A, alias `champion`) se entrena una segunda versión
+de HistGradientBoosting que solo cambia `learning_rate`: 0.05 en lugar de 0.10
+(`P2_HGB_LEARNING_RATE`). Los demás hiperparámetros, el split temporal, el umbral de riesgo
+P80 y el umbral de clasificación son los mismos, así que cualquier diferencia entre A y B se
+debe a ese cambio.
+
+```bash
+python -m mi_bici.modeling.train --question p2 --model hist_gradient_boosting --learning-rate 0.05
+python -m mi_bici.modeling.register_p2 --run-id <RUN_ID_B> --alias challenger
+```
+
+`--learning-rate` solo se aplica a HistGradientBoosting y queda registrado como parámetro del
+run. `--alias` indica qué alias recibe la versión registrada; si se omite, es `champion`, así
+que para una candidata hay que pasarlo siempre.
+
+Al registrar B con el alias `challenger`, el alias `champion` no se mueve y la API sigue
+sirviendo la versión vigente. `champion` solo se reasigna si el A/B testing concluye que B es
+mejor; en ese caso se mueve el alias a la versión que ya existe, sin volver a registrarla:
+
+```python
+from mlflow import MlflowClient
+
+MlflowClient().set_registered_model_alias("mibici-equipo02-p2-riesgo", "champion", <VERSION_B>)
+```
+
+Las versiones, los runs y el resultado del A/B testing están en
+[Resultados de P2](docs/p2_entrega2_resultados.md#versiones-para-el-ab-testing).
+
 ### Reproducibilidad de P2
 
 Para ejecutar el baseline y el entrenamiento P2 desde la raíz del repositorio:

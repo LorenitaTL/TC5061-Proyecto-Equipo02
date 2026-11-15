@@ -17,6 +17,7 @@ from mi_bici.monitoring.ab_test_p2 import (
     build_table,
     compute_metrics,
     decide,
+    display_path,
     load_evaluation,
     logged_test_metrics,
     max_logged_gap,
@@ -244,3 +245,12 @@ def test_load_evaluation_returns_features_target_and_station(tmp_path):
     assert list(X.columns) == features
     assert y.tolist() == [0, 1]
     assert groups.tolist() == [10, 11]
+
+
+def test_display_path_does_not_expose_the_local_machine(tmp_path):
+    from mi_bici.config import PROJ_ROOT
+
+    inside = PROJ_ROOT / "data" / "processed" / "monitoring_p2" / "evaluation.parquet"
+
+    assert display_path(inside) == "data/processed/monitoring_p2/evaluation.parquet"
+    assert display_path(tmp_path / "evaluation.parquet") == "evaluation.parquet"

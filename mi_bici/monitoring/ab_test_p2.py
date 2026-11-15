@@ -47,6 +47,7 @@ import typer
 from mi_bici.config import (
     P2_CLASSIFICATION_THRESHOLD,
     PROCESSED_DATA_DIR,
+    PROJ_ROOT,
     RANDOM_STATE,
     REPORTS_DIR,
 )
@@ -294,6 +295,14 @@ def max_logged_gap(table: pd.DataFrame) -> float:
 # ---------------------------------------------------------
 
 
+def display_path(path: Path) -> str:
+    """Ruta relativa al repositorio, para no guardar rutas de la máquina en los reportes."""
+    resolved = path.resolve()
+    if resolved.is_relative_to(PROJ_ROOT):
+        return resolved.relative_to(PROJ_ROOT).as_posix()
+    return path.name
+
+
 def load_evaluation(path: Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     """Carga el conjunto común de evaluación y valida las columnas que usa el comparador."""
     features = ablation_features("completo")
@@ -362,7 +371,7 @@ def main(
         "model_name": name,
         "A": {"reference": model_a, "version": ref_a.version, "run_id": ref_a.run_id},
         "B": {"reference": model_b, "version": ref_b.version, "run_id": ref_b.run_id},
-        "evaluation_path": str(evaluation_path),
+        "evaluation_path": display_path(evaluation_path),
         "rows": len(X),
         "stations": int(groups.nunique()),
         "risk_rate": float(y.mean()),
@@ -380,7 +389,9 @@ def main(
     summary_path = output_dir / "ab_summary.json"
     table.to_csv(table_path, index=False)
     markdown_path.write_text(table_to_markdown(table), encoding="utf-8")
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
 
     typer.echo("")
     typer.echo(table_to_markdown(table))
