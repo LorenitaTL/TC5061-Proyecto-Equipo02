@@ -599,6 +599,47 @@ python -m mi_bici.modeling.train --question p2 --model random_forest
 
 La comparación de familias y la búsqueda de hiperparámetros se realizan utilizando validation; test se reserva para la evaluación final de la candidata seleccionada.
 
+### A/B testing de P2
+
+`mi_bici.monitoring.ab_test_p2` compara dos versiones registradas de
+`mibici-equipo02-p2-riesgo` sobre el mismo conjunto de evaluación: junio de 2026, generado
+con `mi_bici.monitoring.prepare_p2`. Junio es el periodo de test de P2, posterior al
+entrenamiento (train hasta marzo, validation abril y mayo), así que ninguna de las dos
+versiones lo usó para entrenar ni para elegir hiperparámetros. Las dos se evalúan con el
+mismo umbral de clasificación (`P2_CLASSIFICATION_THRESHOLD`), de modo que la única
+diferencia entre ellas es el modelo.
+
+```bash
+python -m mi_bici.monitoring.prepare_p2 --input data/processed/features_p2.parquet
+python -m mi_bici.monitoring.ab_test_p2 --model-a champion --model-b challenger
+```
+
+`--model-a` y `--model-b` aceptan un alias o un número de versión. El comparador necesita
+el servidor de MLflow donde están registradas las dos versiones (`MLFLOW_TRACKING_URI`, ver
+[Servidor de tracking y MLflow Project](#servidor-de-tracking-y-mlflow-project)).
+
+Para cada versión reporta Recall, Precision, F1, Accuracy, ROC-AUC y PR-AUC, y además:
+
+- **Prueba de McNemar** sobre las filas en que solo una de las dos versiones acierta.
+- **IC 95 % de la diferencia B − A** en Recall, Precision y F1, con bootstrap por
+  estación (2,000 réplicas). Se remuestrean estaciones y no filas porque las horas de una
+  misma estación no son independientes.
+- **Control contra MLflow:** las métricas de test que cada versión registró al
+  entrenarse. Como junio es el periodo de test, deben coincidir con las calculadas.
+
+La regla de decisión se fijó antes de ver los resultados. Recall es la métrica principal de
+P2, así que B reemplaza a A solo si su Recall es significativamente mayor (el IC 95 % de
+ΔRecall queda por encima de 0) y su F1 no es significativamente menor. En cualquier otro
+caso se conserva la versión vigente.
+
+La tabla queda en `reports/ab_test_p2/` (`ab_metrics.csv`, `ab_metrics.md` y
+`ab_summary.json`) y la comparación se registra como run de MLflow
+(`stage_of_work = ab_test`); `--no-log-mlflow` lo desactiva.
+
+Como control del comparador se corrió A contra A con la misma versión: todas las
+diferencias son 0, McNemar da p = 1, la decisión conserva A y las métricas coinciden
+exactamente con las de test registradas en MLflow.
+
 ### Pruebas
 
 El proyecto cuenta con pruebas automatizadas para validar el comportamiento del split temporal, la construcción de la etiqueta de riesgo, la evaluación del modelo, la configuración de las familias y la integración del entrenamiento P2.
@@ -1281,6 +1322,22 @@ python -m pytest tests/test_train_p2.py tests/test_register_p2.py -v
 ```
 
 ![Pruebas del entrenamiento y del registro de P2](reports/figures/evidencia/pytest_p2_entrenamiento.png)
+
+`tests/test_ab_test_p2.py` prueba el comparador A/B con datos sintéticos de semilla fija y un
+cliente de MLflow falso, sin servidor ni datos reales:
+
+- A contra A: sin filas discordantes en McNemar (p = 1), intervalos de ancho cero, la
+  decisión conserva A y las métricas coinciden con las registradas.
+- B distinta de A: McNemar detecta que B corrige errores de A y el IC 95 % de ΔRecall queda
+  por encima de 0 cuando B detecta más horas de riesgo; el bootstrap es reproducible.
+- Regla de decisión: B solo reemplaza a A con una mejora significativa de Recall y sin una
+  caída significativa de F1.
+- Registry y datos: resolución por alias o por número de versión, solo métricas de test,
+  tabla Markdown y rechazo de un conjunto de evaluación sin las columnas del modelo.
+
+```bash
+python -m pytest tests/test_ab_test_p2.py -v
+```
 
 ### Pruebas de P3 y de módulos comunes
 
