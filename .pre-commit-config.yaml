@@ -12,6 +12,8 @@ repos:
       - id: detect-private-key
       - id: check-added-large-files
         args: ["--maxkb=1000"]
+        # Entregable de P2: Evidently embebe ~5.8 MB de JavaScript en el HTML.
+        exclude: ^reports/monitoring_p2/p2_drift_calidad\.html$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.0

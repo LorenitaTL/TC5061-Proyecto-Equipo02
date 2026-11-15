@@ -1,0 +1,44 @@
+{
+  "evidently": "0.7.23",
+  "referencia": "2025-01-01 a 2026-04-01 (exclusivo)",
+  "actual": "2026-06-01 a 2026-07-01 (exclusivo)",
+  "umbral_risk": 0.06666666666666667,
+  "muestra_por_conjunto": 50000,
+  "semilla": 42,
+  "umbral_drift": 0.1,
+  "predictores_con_drift": [],
+  "share_predictores_con_drift": 0.0,
+  "drift_en_risk": false,
+  "calidad_referencia": {
+    "filas": 5241600,
+    "estaciones": 480,
+    "claves_duplicadas": 0,
+    "celdas_faltantes": 41760,
+    "variables_con_faltantes": [
+      "arrivals_lag_1h",
+      "arrivals_lag_24h",
+      "arrivals_lag_2h",
+      "arrivals_rolling_24h",
+      "arrivals_rolling_3h",
+      "departures_lag_1h",
+      "departures_lag_24h",
+      "departures_lag_2h",
+      "departures_rolling_24h",
+      "departures_rolling_3h",
+      "net_flow_lag_1h",
+      "net_flow_lag_24h",
+      "net_flow_lag_2h",
+      "net_flow_rolling_24h",
+      "net_flow_rolling_3h"
+    ],
+    "tasa_risk": 0.19399381868131868
+  },
+  "calidad_actual": {
+    "filas": 345600,
+    "estaciones": 480,
+    "claves_duplicadas": 0,
+    "celdas_faltantes": 0,
+    "variables_con_faltantes": [],
+    "tasa_risk": 0.17313657407407407
+  }
+}
