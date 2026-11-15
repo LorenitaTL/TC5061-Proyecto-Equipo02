@@ -283,6 +283,10 @@ MLflow con las dos versiones registradas:
   reproduce en otro servidor de MLflow; el entrenamiento usa semilla fija, así que las
   métricas no.
 
+![Versiones del modelo P2 en el Registry: v1 champion y v2 challenger](../reports/figures/evidencia/mlflow_p2_ab_versiones.png)
+
+![Run de la candidata B con learning_rate 0.05 y sus métricas de test](../reports/figures/evidencia/mlflow_p2_candidata_b.png)
+
 ### Resultado del A/B testing
 
 Comparación con `mi_bici.monitoring.ab_test_p2` sobre junio de 2026 (345,600 horas-estación
@@ -313,6 +317,8 @@ tamaño de la muestra, pero pequeñas en la práctica (menos de medio punto porc
 
 Los archivos de la comparación están en `reports/ab_test_p2/` y la corrida está registrada en
 MLflow como `P2-ab-test-v1-vs-v2` (`stage_of_work = ab_test`).
+
+![Run del A/B testing con las métricas de A y B, McNemar y la versión ganadora](../reports/figures/evidencia/mlflow_p2_ab_run.png)
 
 El análisis de drift entre el periodo de entrenamiento y este mismo junio está en
 [Drift y calidad de datos de P2](p2_drift.md): ninguna variable supera el umbral, así que A y
