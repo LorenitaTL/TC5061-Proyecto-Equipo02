@@ -105,8 +105,12 @@ def main(
         MODEL_NAME,
         help="Nombre del modelo en el Registry.",
     ),
+    alias: str = typer.Option(
+        ALIAS,
+        help="Alias que se asignará a la versión registrada.",
+    ),
 ) -> None:
-    """Registra la corrida, documenta su linaje y asigna el alias champion."""
+    """Registra la corrida, documenta su linaje y asigna el alias solicitado."""
 
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
 
@@ -279,44 +283,43 @@ def main(
         )
 
     # ---------------------------------------------------------
-    # 9. Asignar alias champion
+    # 9. Asignar alias solicitado
     # ---------------------------------------------------------
 
     client.set_registered_model_alias(
         name,
-        ALIAS,
+        alias,
         version,
     )
 
     resolved = client.get_model_version_by_alias(
         name,
-        ALIAS,
+        alias,
     )
 
     if str(resolved.version) != str(version):
-        raise RuntimeError("El alias champion no apunta a la versión esperada.")
+        raise RuntimeError(f"El alias {alias} no apunta a la versión esperada.")
 
-    typer.echo(f"OK: alias {ALIAS} apunta a versión {version}.")
+    typer.echo(f"OK: alias {alias} apunta a versión {version}.")
 
     # ---------------------------------------------------------
     # 10. Verificar carga mediante alias champion
     # ---------------------------------------------------------
 
-    alias_uri = f"models:/{name}@{ALIAS}"
+    alias_uri = f"models:/{name}@{alias}"
 
-    champion = mlflow.sklearn.load_model(alias_uri)
+    registered_alias_model = mlflow.sklearn.load_model(alias_uri)
 
-    typer.echo(f"OK: modelo champion cargado desde {alias_uri}.")
+    typer.echo(f"OK: modelo cargado desde {alias_uri}.")
 
     if input_example is not None:
-        champion_prediction = champion.predict(example)
+        registered_alias_prediction = registered_alias_model.predict(example)
 
         np.testing.assert_array_equal(
             original_prediction,
-            champion_prediction,
+            registered_alias_prediction,
         )
-
-        typer.echo("OK: champion produce las mismas predicciones que el modelo original.")
+        typer.echo(f"OK: alias {alias} produce las mismas predicciones que el modelo original.")
 
     typer.echo("")
     typer.echo("==========================================")
