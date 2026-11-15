@@ -260,6 +260,60 @@ Para registrar una nueva candidata:
 python -m mi_bici.modeling.register_p2 --run-id <RUN_ID>
 ```
 
+### Versiones para el A/B testing
+
+Para la Actividad 10 se registró una segunda versión del mismo modelo (candidata B) que solo
+cambia `learning_rate` de HistGradientBoosting. La corrida final se ejecutó en un servidor de
+MLflow con las dos versiones registradas:
+
+| Versión | Alias | `learning_rate` | Source Run |
+|---|---|---|---|
+| A: 1 | `champion` | 0.10 | `55d8255b3272402ea2532729ec2b1629` |
+| B: 2 | `challenger` | 0.05 | `ac91bbd5a7804b7d99687684a3245e6d` |
+
+- A y B usan los mismos datos (`features_data_version` `337f806a…`), el mismo split
+  temporal, el mismo umbral de riesgo P80 (0.066667) y el mismo umbral de clasificación
+  (0.35). La única diferencia es `learning_rate`.
+- Al registrar B, `register_p2` verificó que `models:/mibici-equipo02-p2-riesgo@challenger`
+  carga y produce las mismas predicciones que el modelo del run de origen.
+- `champion` siguió apuntando a la versión 1 después de registrar B, así que la API no
+  cambió.
+- Los comandos para reproducir el entrenamiento y el registro de B están en el README
+  («Candidata B para el A/B testing»). Los números de versión y los run ID cambian si se
+  reproduce en otro servidor de MLflow; el entrenamiento usa semilla fija, así que las
+  métricas no.
+
+### Resultado del A/B testing
+
+Comparación con `mi_bici.monitoring.ab_test_p2` sobre junio de 2026 (345,600 horas-estación
+de 480 estaciones; 17.31 % con Risk = 1). Junio es el periodo de test de P2, posterior al
+entrenamiento, y ninguna versión lo usó para entrenar ni para elegir hiperparámetros.
+
+| Métrica | A (v1) | B (v2) | Δ B − A | IC 95 % de Δ |
+|---|---:|---:|---:|---|
+| Recall | 0.6871 | 0.6839 | −0.0032 | [−0.0061, −0.00002] |
+| Precision | 0.4898 | 0.4885 | −0.0013 | [−0.0025, 0.00003] |
+| F1 | 0.5719 | 0.5699 | −0.0020 | [−0.0032, −0.0007] |
+| Accuracy | 0.8219 | 0.8213 | −0.0006 | — |
+| ROC-AUC | 0.8786 | 0.8775 | −0.0011 | — |
+| PR-AUC | 0.5666 | 0.5669 | +0.0004 | — |
+
+- IC 95 % con bootstrap por estación (2,000 réplicas, semilla 42).
+- McNemar: en 2,599 filas solo acierta A y en 2,387 solo acierta B (p = 0.0028).
+- Las métricas calculadas coinciden exactamente con las de test que registró cada run en
+  MLflow (diferencia máxima 0), lo que confirma que el comparador reproduce la evaluación del
+  entrenamiento.
+
+**Decisión: se conserva A (v1) como `champion`.** Según la regla fijada antes de la
+comparación, B solo reemplaza a A si mejora Recall de forma significativa; B no lo mejora.
+Su Recall es menor, aunque el límite superior del intervalo queda apenas por debajo de 0, y
+su F1 es significativamente menor. Las diferencias son estadísticamente detectables por el
+tamaño de la muestra, pero pequeñas en la práctica (menos de medio punto porcentual): bajar
+`learning_rate` de 0.10 a 0.05 no aporta mejora y A sigue vigente.
+
+Los archivos de la comparación están en `reports/ab_test_p2/` y la corrida está registrada en
+MLflow como `P2-ab-test-v1-vs-v2` (`stage_of_work = ab_test`).
+
 ---
 
 ## Política de clasificación

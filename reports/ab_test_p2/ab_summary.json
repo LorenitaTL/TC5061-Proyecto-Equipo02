@@ -1,0 +1,27 @@
+{
+  "model_name": "mibici-equipo02-p2-riesgo",
+  "A": {
+    "reference": "champion",
+    "version": "1",
+    "run_id": "55d8255b3272402ea2532729ec2b1629"
+  },
+  "B": {
+    "reference": "challenger",
+    "version": "2",
+    "run_id": "ac91bbd5a7804b7d99687684a3245e6d"
+  },
+  "evaluation_path": "data/processed/monitoring_p2/evaluation.parquet",
+  "rows": 345600,
+  "stations": 480,
+  "risk_rate": 0.17313657407407407,
+  "threshold": 0.35,
+  "n_bootstrap": 2000,
+  "mcnemar": {
+    "only_a_correct": 2599,
+    "only_b_correct": 2387,
+    "p_value": 0.0028028330225717303
+  },
+  "max_gap_vs_logged_test": 0.0,
+  "winner": "A",
+  "reason": "B tiene un Recall significativamente menor que A."
+}
