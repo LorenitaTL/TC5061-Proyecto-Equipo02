@@ -314,6 +314,10 @@ tamaño de la muestra, pero pequeñas en la práctica (menos de medio punto porc
 Los archivos de la comparación están en `reports/ab_test_p2/` y la corrida está registrada en
 MLflow como `P2-ab-test-v1-vs-v2` (`stage_of_work = ab_test`).
 
+El análisis de drift entre el periodo de entrenamiento y este mismo junio está en
+[Drift y calidad de datos de P2](p2_drift.md): ninguna variable supera el umbral, así que A y
+B se compararon sobre datos que siguen pareciéndose a los de entrenamiento.
+
 ---
 
 ## Política de clasificación
