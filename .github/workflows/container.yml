@@ -1,0 +1,51 @@
+name: container
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Builds the image from the Containerfile and checks that the API answers GET /health.
+  # There is no MLflow here, so the API starts without a model (model_loaded: false).
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IMAGE: mibici-api:ci
+      CONTAINER: mibici-api-ci
+    steps:
+      - uses: actions/checkout@v4
+
+      # Podman is preinstalled on ubuntu-latest
+      - run: podman --version
+
+      - name: Build image
+        run: podman build -t "$IMAGE" .
+
+      - name: Start container
+        run: podman run -d --name "$CONTAINER" -p 8000:8000 "$IMAGE"
+
+      # Waits up to 3 minutes for uvicorn; fails if the container stops or /health never
+      # returns 200. Uses 127.0.0.1 because "localhost" may resolve to ::1 first.
+      - name: Check GET /health
+        run: |
+          for i in $(seq 1 90); do
+            if [ "$(podman inspect -f '{{.State.Running}}' "$CONTAINER")" != "true" ]; then
+              echo "The container stopped"; exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:8000/health; then
+              echo; echo "GET /health returned 200 after ~$((i * 2)) s"; exit 0
+            fi
+            sleep 2
+          done
+          echo "GET /health did not return 200 in 180 s"; exit 1
+
+      - name: Container logs
+        if: always()
+        run: podman logs --timestamps "$CONTAINER" || true
+
+      - name: Stop container
+        if: always()
+        run: podman rm -f "$CONTAINER" || true
