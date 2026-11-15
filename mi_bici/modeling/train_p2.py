@@ -460,9 +460,7 @@ def get_classifier(
         )
 
     if model_family == "HistGradientBoosting" and hgb_learning_rate is not None:
-        models[model_family].set_params(
-            learning_rate=hgb_learning_rate
-        )
+        models[model_family].set_params(learning_rate=hgb_learning_rate)
 
     return models[model_family]
 
@@ -1257,9 +1255,7 @@ def train_model(
                 "random_state": RANDOM_STATE,
                 # HistGradientBoosting
                 "learning_rate": (
-                    hgb_learning_rate
-                    if hgb_learning_rate is not None
-                    else P2_HGB_LEARNING_RATE
+                    hgb_learning_rate if hgb_learning_rate is not None else P2_HGB_LEARNING_RATE
                 ),
                 "max_iter": P2_HGB_MAX_ITER,
                 "max_leaf_nodes": P2_HGB_MAX_LEAF_NODES,
@@ -1321,8 +1317,8 @@ def train_model(
         # -------------------------------------------------
 
         classifier = get_classifier(
-        model_family,
-        hgb_learning_rate=hgb_learning_rate,
+            model_family,
+            hgb_learning_rate=hgb_learning_rate,
         )
 
         model = build_pipeline(classifier)

@@ -298,9 +298,7 @@ def main(
     )
 
     if str(resolved.version) != str(version):
-        raise RuntimeError(
-            f"El alias {alias} no apunta a la versión esperada."
-        )
+        raise RuntimeError(f"El alias {alias} no apunta a la versión esperada.")
 
     typer.echo(f"OK: alias {alias} apunta a versión {version}.")
 
