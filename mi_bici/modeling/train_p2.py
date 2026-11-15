@@ -447,13 +447,21 @@ def get_family_models() -> dict[str, object]:
     }
 
 
-def get_classifier(model_family: str):
+def get_classifier(
+    model_family: str,
+    hgb_learning_rate: float | None = None,
+):
     """Devuelve el clasificador correspondiente a una familia de modelos."""
     models = get_family_models()
 
     if model_family not in models:
         raise ValueError(
             f"Familia de modelo desconocida: {model_family}. Opciones: {list(models)}"
+        )
+
+    if model_family == "HistGradientBoosting" and hgb_learning_rate is not None:
+        models[model_family].set_params(
+            learning_rate=hgb_learning_rate
         )
 
     return models[model_family]
@@ -1114,6 +1122,7 @@ def train_model(
     input_path: Path,
     ablation: str,
     model_family: str = P2_MODEL_FAMILY,
+    hgb_learning_rate: float | None = None,
 ):
     """
     Entrena el modelo de clasificación de riesgo operacional P2.
@@ -1247,7 +1256,11 @@ def train_model(
                 "classification_threshold": classification_threshold,
                 "random_state": RANDOM_STATE,
                 # HistGradientBoosting
-                "learning_rate": P2_HGB_LEARNING_RATE,
+                "learning_rate": (
+                    hgb_learning_rate
+                    if hgb_learning_rate is not None
+                    else P2_HGB_LEARNING_RATE
+                ),
                 "max_iter": P2_HGB_MAX_ITER,
                 "max_leaf_nodes": P2_HGB_MAX_LEAF_NODES,
                 "min_samples_leaf": P2_HGB_MIN_SAMPLES_LEAF,
@@ -1307,7 +1320,10 @@ def train_model(
         # 8. Definir modelo
         # -------------------------------------------------
 
-        classifier = get_classifier(model_family)
+        classifier = get_classifier(
+        model_family,
+        hgb_learning_rate=hgb_learning_rate,
+        )
 
         model = build_pipeline(classifier)
 
@@ -1655,6 +1671,10 @@ def run(model: str, params: dict):
     input_path = Path(params.get("input_path", DATASET_PATH))
     ablation = params.get("ablation", "completo")
 
+    hgb_learning_rate = params.get("learning_rate")
+    if hgb_learning_rate is not None:
+        hgb_learning_rate = float(hgb_learning_rate)
+
     # -------------------------------------------------
     # Búsqueda de hiperparámetros existente
     # -------------------------------------------------
@@ -1696,6 +1716,7 @@ def run(model: str, params: dict):
             input_path,
             name,
             model_family=selected_model_family,
+            hgb_learning_rate=hgb_learning_rate,
         )
         run_ids.append(run_id)
 
