@@ -121,7 +121,7 @@ def make_plots(runs_dir: str | Path, output_dir: str | Path) -> None:
 
     runs_dir = Path(runs_dir)
     output_dir = Path(output_dir)
-    figures_dir = output_dir / "figuras"
+    figures_dir = output_dir / "figures"
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     summaries = write_summary(runs_dir, output_dir)
@@ -190,3 +190,21 @@ def make_plots(runs_dir: str | Path, output_dir: str | Path) -> None:
     error_figure.tight_layout()
     error_figure.savefig(figures_dir / "tasa_error.png", dpi=150)
     plt.close(error_figure)
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Genera el resumen y las gráficas de carga de Locust."
+    )
+    parser.add_argument("--runs-dir", default="reports/load_test")
+    parser.add_argument("--output-dir", default="reports/load_test")
+    args = parser.parse_args()
+
+    make_plots(args.runs_dir, args.output_dir)
+    print(f"Reporte generado en {args.output_dir}")
+
+
+if __name__ == "__main__":
+    main()
