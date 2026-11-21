@@ -1,0 +1,122 @@
+# Sistema de MiBici con un solo comando: servidor de MLflow, modelo semilla de P2 y API.
+#
+#   make compose-up      # docker compose up -d --build --wait
+#   make compose-down
+#
+# Orden de arranque: mlflow (sano) -> seed (registra el modelo y termina) -> api (sana).
+# Los tres servicios usan la misma imagen (Containerfile), así que comparten las versiones
+# de requirements.txt. Con podman: make compose-up COMPOSE=podman-compose.
+# Para servir el registro real en lugar de la semilla: ver docker-compose.local.yml.
+
+name: mibici
+
+# Una sola imagen para los tres servicios: solo api la construye (build); mlflow y seed la
+# reutilizan sin intentar descargarla (pull_policy: never). Con build en los tres, Compose
+# construiría y exportaría la misma imagen tres veces.
+x-mibici-image: &mibici-image
+  image: ${API_IMAGE:-mibici-api:local}
+  pull_policy: never
+
+services:
+  mlflow:
+    <<: *mibici-image
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --workers=1
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --artifacts-destination=/mlflow/artifacts
+      - --serve-artifacts
+      # MLflow solo acepta por omisión el Host localhost o IPs privadas; la API y la
+      # semilla lo llaman por el nombre del servicio.
+      - --allowed-hosts=mlflow,mlflow:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
+    environment:
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    ports:
+      # 5001 en el host: en macOS el 5000 lo ocupa AirPlay.
+      - "${MLFLOW_PORT:-5001}:5000"
+    volumes:
+      - mlflow-data:/mlflow
+    networks:
+      - mibici-net
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "${MLFLOW_CPUS:-1.0}"
+          memory: ${MLFLOW_MEMORY:-1g}
+
+  seed:
+    <<: *mibici-image
+    # Idempotente: si el alias champion ya existe en el volumen, termina sin registrar nada.
+    command: ["python", "-m", "mi_bici.operations.seed_model"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+      # La imagen no trae git: evita que MLflow advierta al no poder leer el commit.
+      GIT_PYTHON_REFRESH: quiet
+    networks:
+      - mibici-net
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ${API_IMAGE:-mibici-api:local}
+    build:
+      context: .
+      dockerfile: Containerfile
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: ${MODEL_NAME:-mibici-equipo02-p2-riesgo}
+      MODEL_ALIAS: ${MODEL_ALIAS:-champion}
+      MODEL_VERSION: ${MODEL_VERSION:-}
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+    ports:
+      - "${API_PORT:-8000}:8000"
+    networks:
+      - mibici-net
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+    # Sano = el modelo cargó (model_loaded: true), no solo que el proceso responde. Así
+    # `up --wait` falla si la API arranca sin modelo.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json, urllib.request; r = urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3); assert json.load(r)['model_loaded']"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-1.0}"
+          memory: ${API_MEMORY:-1g}
+
+networks:
+  mibici-net:
+    name: mibici-net
+
+volumes:
+  mlflow-data:
+    name: mibici-mlflow-data

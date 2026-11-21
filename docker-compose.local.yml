@@ -1,0 +1,17 @@
+# Override opcional: sirve el registro real de tu máquina (mlflow.db y mlartifacts/) en lugar
+# del modelo semilla. Ejecutar desde la raíz del repo:
+#
+#   make compose-up COMPOSE="docker compose -f docker-compose.yml -f docker-compose.local.yml"
+#
+# mlflow.db guarda los artefactos como mlflow-artifacts:/..., relativos al servidor de MLflow
+# que los registró (`mlflow server` con --serve-artifacts usa ./mlartifacts por omisión), así
+# que basta montar mlartifacts/ como --artifacts-destination del servicio mlflow. La API
+# descarga el modelo a través del servidor y no necesita volúmenes. Como el alias champion ya
+# existe en el registro real, el servicio seed termina sin registrar nada.
+# Requiere que mlflow.db y mlartifacts/ existan; el servidor puede escribir en ellos.
+
+services:
+  mlflow:
+    volumes:
+      - ./mlflow.db:/mlflow/mlflow.db
+      - ./mlartifacts:/mlflow/artifacts
