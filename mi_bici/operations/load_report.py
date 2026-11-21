@@ -84,6 +84,8 @@ def write_summary(
     if not rows:
         raise ValueError(f"No hay escenarios en {runs_dir}")
 
+    rows.sort(key=lambda row: int(row["usuarios"]))
+
     with (output_dir / "resumen.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=COLUMNS)
         writer.writeheader()
@@ -176,11 +178,23 @@ def make_plots(runs_dir: str | Path, output_dir: str | Path) -> None:
     rps_figure.savefig(figures_dir / "rps_escenarios.png", dpi=150)
     plt.close(rps_figure)
 
+    error_values = [float(row["tasa_error"]) * 100 for row in summaries]
+
     error_figure, error_axis = plt.subplots(figsize=(8, 5))
-    error_axis.bar(
+    error_bars = error_axis.bar(
         [str(row["escenario"]) for row in summaries],
-        [float(row["tasa_error"]) * 100 for row in summaries],
+        error_values,
     )
+    error_axis.bar_label(
+        error_bars,
+        labels=[f"{value:.2f}%" for value in error_values],
+        padding=4,
+    )
+
+    # Evita que una tasa de 0% produzca una gráfica aparentemente vacía.
+    if not any(error_values):
+        error_axis.set_ylim(0, 0.05)
+
     error_axis.set(
         title="Tasa de error de /predict",
         xlabel="Escenario",
