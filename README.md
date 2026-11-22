@@ -1955,10 +1955,13 @@ servidor:
 1. **Registry compartido.** Un servidor de MLflow con base de datos y artefactos en un
    almacenamiento común, en lugar del `mlflow.db` de cada persona. El contenedor solo
    cambia `MLFLOW_TRACKING_URI=http://<servidor-mlflow>`; no hace falta montar volúmenes.
-2. **Publicación de la imagen.** El workflow `container` ya construye la imagen y prueba
-   `/health` en cada PR y en cada push a `main`. El siguiente paso sería publicarla en un
-   registro de contenedores (por ejemplo GHCR) con la etiqueta del commit. No está
-   implementado.
+2. **Publicación de la imagen.** El workflow `ci-cd` construye la imagen, la valida con
+   Compose (smoke de `/health` y `POST /predict` y Locust de 30 s) y, en cada push a `main`
+   o corrida manual (`workflow_dispatch`), publica esa misma imagen en GHCR
+   (`ghcr.io/lorenitatl/tc5061-proyecto-equipo02/mibici-api`) con la etiqueta
+   `sha-<commit>`; `latest` solo se mueve desde `main`. El job `deploy` la descarga de GHCR,
+   levanta el sistema con `API_IMAGE=<imagen>` y repite el smoke; `notify` deja el resultado
+   y la duración de cada job en el resumen de la corrida y en un comentario del PR.
 3. **Promoción y reversión del modelo.** Para promover una versión nueva se mueve el alias
    `champion` en el Registry (ver
    [Registrar el modelo elegido](#5-registrar-el-modelo-elegido-de-cada-pregunta)) y se

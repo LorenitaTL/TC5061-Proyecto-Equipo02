@@ -14,6 +14,10 @@ concurrency:
 permissions:
   contents: read
 
+# Name of the image built by the image job, before it is tagged for GHCR
+env:
+  LOCAL_IMAGE: mibici-api:ci
+
 jobs:
   # Runs the test suite with coverage on the three OSes the team uses
   ci-tests:
@@ -53,97 +57,65 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # Builds the API image after the tests pass on every OS and publishes it to GHCR
-  # (Packages), tagged with the commit SHA. Buildx layers are cached in GitHub Actions.
-  # A PR from a fork cannot write packages, so there the image is only built.
+  # Builds the API image once the tests pass on every OS, with Buildx layers cached in
+  # GitHub Actions (type=gha). The image travels to the next jobs as an artifact, so
+  # compose tests and publish pushes exactly the same image. Read-only: it pushes nothing.
   image:
     needs: ci-tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-    env:
-      PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-    outputs:
-      image: ${{ steps.name.outputs.image }}
-      pushed: ${{ env.PUSH }}
     steps:
       - uses: actions/checkout@v4
 
-      # GHCR only accepts lowercase names (contract: ghcr.io/lorenitatl/tc5061-proyecto-equipo02/mibici-api)
-      - name: Image name
-        id: name
-        shell: bash
-        run: |
-          repo="${GITHUB_REPOSITORY,,}"
-          echo "image=ghcr.io/${repo}/mibici-api:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "repo=ghcr.io/${repo}/mibici-api" >> "$GITHUB_OUTPUT"
-
       - uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        if: env.PUSH == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # sha-<commit> always; the branch name too, and latest only on main
-      - name: Image tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ steps.name.outputs.repo }}
-          tags: |
-            type=raw,value=sha-${{ github.sha }}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push image
+      - name: Build image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Containerfile
-          push: ${{ env.PUSH == 'true' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.LOCAL_IMAGE }}
+          outputs: type=docker,dest=${{ runner.temp }}/image.tar
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Brings up the whole system (mlflow -> seed -> api) with the published image and checks
-  # that it serves predictions: /health with the model loaded, POST /predict and a short
-  # Locust run. The volume is deleted at the end so every run starts from the seed model.
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar
+          retention-days: 1
+
+  # Brings up the whole system (mlflow -> seed -> api) with the image just built and checks
+  # that it serves predictions: smoke test of /health and POST /predict and a short Locust
+  # run. The volume is deleted at the end so every run starts from the seed model.
   compose:
     needs: image
-    if: needs.image.outputs.pushed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: read
     env:
-      API_IMAGE: ${{ needs.image.outputs.image }}
       API_URL: http://127.0.0.1:8000
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       # mlflow and seed use pull_policy: never, so the image must be local before `up`
-      - name: Pull image
-        run: docker pull "$API_IMAGE"
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+          path: ${{ runner.temp }}
+
+      - name: Load image
+        run: |
+          docker load --input "$RUNNER_TEMP/image.tar"
+          echo "API_IMAGE=$LOCAL_IMAGE" >> "$GITHUB_ENV"
 
       # --wait returns once mlflow and api are healthy; the api healthcheck requires
       # model_loaded: true, so it fails if the seed model did not load
       - name: Start system
         run: docker compose up -d --no-build --wait --wait-timeout 300
+
+      - name: Smoke test
+        run: bash .github/scripts/smoke.sh
 
       - uses: actions/setup-python@v5
         with:
@@ -160,29 +132,10 @@ jobs:
           python -m pip install -r requirements-load.txt \
             "$(grep '^python-dotenv==' requirements.txt)" \
             "$(grep '^loguru==' requirements.txt)"
-          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-
-      - name: Smoke test GET /health
-        run: |
-          body="$(curl --fail --silent --show-error "$API_URL/health")"
-          echo "$body"
-          echo "$body" | python -c "import json, sys; assert json.load(sys.stdin)['model_loaded'] is True, 'model_loaded is not true'"
-
-      - name: Smoke test POST /predict
-        run: |
-          payload="$(python -c "import json, random; from mi_bici.operations.load_payloads import make_payload; print(json.dumps(make_payload(random.Random(42))))")"
-          body="$(curl --fail --silent --show-error -X POST "$API_URL/predict" \
-            -H 'Content-Type: application/json' -d "$payload")"
-          echo "$body"
-          echo "$body" | python -c "
-          import json, sys
-          r = json.load(sys.stdin)
-          assert 0 <= r['risk_probability'] <= 1, r
-          assert r['risk_label'] in ('alto', 'bajo'), r
-          assert r['model_name'] and r['model_version'], r
-          "
 
       - name: Locust headless (30 s)
+        env:
+          PYTHONPATH: ${{ github.workspace }}
         run: |
           if [ ! -f load_tests/locustfile.py ]; then
             echo "load_tests/locustfile.py does not exist; skipping"; exit 0
@@ -209,3 +162,159 @@ jobs:
       - name: Stop system
         if: always()
         run: docker compose down -v
+
+  # Publishes the image validated by compose to GHCR (Packages) as
+  # ghcr.io/<owner>/<repo>/mibici-api:sha-<commit> and :latest. Only on push to main and
+  # on workflow_dispatch; latest moves only from main, so a manual run on a PR branch
+  # publishes its sha tag without replacing the image of main.
+  publish:
+    needs: compose
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+      tags: ${{ steps.push.outputs.tags }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+          path: ${{ runner.temp }}
+
+      - name: Load image
+        run: docker load --input "$RUNNER_TEMP/image.tar"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR only accepts lowercase names (contract: ghcr.io/lorenitatl/tc5061-proyecto-equipo02/mibici-api)
+      - name: Tag and push
+        id: push
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}/mibici-api"
+          tags="sha-${GITHUB_SHA}"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then tags="$tags latest"; fi
+          for tag in $tags; do
+            docker tag "$LOCAL_IMAGE" "$repo:$tag"
+            docker push "$repo:$tag"
+          done
+          echo "image=$repo:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+  # Deploys the published image the way a server would: pulls it from GHCR, starts the
+  # system with API_IMAGE=<ghcr> and runs the same smoke test. The runner is discarded at
+  # the end, so it ends with `down -v`.
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    env:
+      API_IMAGE: ${{ needs.publish.outputs.image }}
+      API_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull published image
+        run: docker pull "$API_IMAGE"
+
+      - name: Start system
+        run: docker compose up -d --no-build --wait --wait-timeout 300
+
+      - name: Smoke test
+        run: bash .github/scripts/smoke.sh
+
+      - name: Compose logs
+        if: always()
+        run: |
+          docker compose ps -a
+          docker compose logs --timestamps --no-color
+
+      - name: Stop system
+        if: always()
+        run: docker compose down -v
+
+  # Always runs: writes the result and duration of every job and the image tag to the run
+  # summary, and posts the same table on the PR (it edits its previous comment instead of
+  # adding a new one). On pull_request the PR comes from the event; on push and
+  # workflow_dispatch, from the PR associated with the commit.
+  notify:
+    needs: [ci-tests, image, compose, publish, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      IMAGE: ${{ needs.publish.outputs.image }}
+      IMAGE_TAGS: ${{ needs.publish.outputs.tags }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - name: Build summary
+        run: |
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          {
+            echo "## ci-cd · ${GITHUB_SHA::7} · $GITHUB_EVENT_NAME"
+            echo
+            echo "| Job | Resultado | Duración |"
+            echo "| :--- | :--- | ---: |"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+              --paginate --jq '.jobs[] | select(.name != "notify") | [.name, (.conclusion // .status), .started_at, .completed_at] | @tsv' |
+            while IFS=$'\t' read -r name result started completed; do
+              case "$result" in
+                success) icon="✅" ;; failure) icon="❌" ;; cancelled) icon="⛔" ;; skipped) icon="⏭️" ;; *) icon="•" ;;
+              esac
+              if [ "$result" = "skipped" ] || [ -z "$completed" ] || [ "$completed" = "null" ]; then
+                duration="—"
+              else
+                s=$(( $(date -d "$completed" +%s) - $(date -d "$started" +%s) ))
+                duration="$((s / 60))m $((s % 60))s"
+              fi
+              echo "| \`$name\` | $icon $result | $duration |"
+            done
+            echo
+            if [ -n "$IMAGE" ]; then
+              tag_list=""
+              for t in $IMAGE_TAGS; do tag_list+="${tag_list:+, }\`$t\`"; done
+              echo "**Imagen:** \`$IMAGE\` (etiquetas: $tag_list)"
+            else
+              echo "**Imagen:** no publicada en esta corrida (publish solo corre en push a main y workflow_dispatch)."
+            fi
+            created="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)"
+            total=$(( $(date +%s) - $(date -d "$created" +%s) ))
+            echo
+            echo "**Tiempo total:** $((total / 60))m $((total % 60))s · [Ver corrida]($run_url)"
+          } > summary.md
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat summary.md
+
+      - name: Comment on PR
+        if: env.FORK_PR != 'true'
+        run: |
+          pr="$PR_NUMBER"
+          if [ -z "$pr" ]; then
+            pr="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[0].number // empty')"
+          fi
+          if [ -z "$pr" ]; then
+            echo "No PR is associated with $GITHUB_SHA; skipping the comment"; exit 0
+          fi
+          gh pr comment "$pr" --body-file summary.md --edit-last --create-if-none
