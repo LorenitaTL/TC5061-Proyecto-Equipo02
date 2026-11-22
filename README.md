@@ -2064,7 +2064,33 @@ FinOps. Cada parte del sistema se desarrolla contra este contrato, sin esperar a
 
 Responsable: [@clsrivas](https://github.com/clsrivas).
 
-_Pendiente._
+![Arquitectura de operación: servicios de Compose, red, volumen, jobs de ci-cd.yml y Locust](reports/figures/evidencia/arquitectura_operacion.png)
+
+El diagrama tiene dos zonas, la de GitHub Actions (arriba) y la del sistema en Compose
+(abajo), y une las dos con las flechas punteadas:
+
+- **Sistema en Compose** (`docker-compose.yml`, proyecto `mibici`). Los tres servicios
+  usan la misma imagen y comparten la red `mibici-net`:
+  - `mlflow`: servidor de tracking y Model Registry, en el puerto 5000 del contenedor
+    (5001 del host). Guarda la base SQLite y los artefactos en el volumen
+    `mibici-mlflow-data`, montado en `/mlflow`.
+  - `seed`: corre una sola vez cuando `mlflow` está sano, registra el modelo semilla de P2 y
+    le asigna el alias `champion`.
+  - `api`: FastAPI en el puerto 8000. Carga el `champion` desde `mlflow` al arrancar y solo
+    se considera sana con `model_loaded: true`.
+- **Pipeline `ci-cd.yml`**: seis jobs encadenados con `needs`, descritos en
+  [Pipeline de CI/CD](#pipeline-de-cicd). `compose` y `deploy` levantan el mismo sistema en
+  el runner. `compose` usa la imagen recién construida (`mibici-api:ci`) y `deploy` usa la
+  publicada en GHCR (`API_IMAGE=ghcr.io/...:sha-<commit>`).
+- **Locust** corre en el runner, fuera de la red de Compose, como cualquier cliente externo.
+  Llama a `api` por el puerto publicado `:8000` con la mezcla 8:1:1 de
+  `load_tests/locustfile.py` (`POST /predict`, `GET /health` y un payload inválido que espera
+  422). En CI lo lanza el job `compose` (30 s, 10 usuarios); los escenarios largos se
+  corren con `make load-test` (ver [Pruebas de carga con Locust](#pruebas-de-carga-con-locust)).
+
+La fuente del diagrama es `docs/architecture/arquitectura_operacion.json` (formato
+[Archify](https://github.com/tt-a1i/archify)). El HTML interactivo está en
+`docs/architecture/arquitectura_operacion.html` y el PNG se exportó desde ese visor.
 
 ### Orquestación con Docker Compose
 
@@ -2143,7 +2169,25 @@ make compose-up COMPOSE="docker compose -f docker-compose.yml -f docker-compose.
 
 Responsable: [@clsrivas](https://github.com/clsrivas).
 
-_Pendiente._
+El workflow `.github/workflows/ci-cd.yml` corre en cada PR, en cada push a `main` y a mano
+(`workflow_dispatch`). Con `concurrency` y `cancel-in-progress`, un push nuevo a la misma
+rama o PR cancela la corrida anterior.
+
+| Job | Depende de | Cuándo corre | Qué hace |
+| :--- | :--- | :--- | :--- |
+| `ci-tests` | — | siempre | `pytest` con cobertura en Ubuntu, Windows y macOS (Python 3.12, `cache: pip`); sube `coverage-<os>` como artefacto |
+| `image` | `ci-tests` | siempre | Construye la imagen con Buildx y caché `type=gha`, y la pasa como artefacto (`mibici-api:ci`) |
+| `compose` | `image` | siempre | `docker compose up -d --wait`, smoke de `/health` (`model_loaded: true`) y `POST /predict`, y Locust headless de 30 s; logs y `down -v` con `if: always()` |
+| `publish` | `compose` | push a `main` y `workflow_dispatch` | Con `packages: write`, sube a GHCR la misma imagen que validó `compose`, con las etiquetas `sha-<commit>` y `latest` (solo desde `main`) |
+| `deploy` | `publish` | igual que `publish` | `docker pull` de la imagen publicada, `API_IMAGE=<ghcr> docker compose up -d --wait` y el mismo smoke |
+| `notify` | todos | siempre (`if: always()`) | Escribe en `$GITHUB_STEP_SUMMARY` el resultado y la duración de cada job, la etiqueta de la imagen y el tiempo total, y publica el mismo texto como comentario en el PR |
+
+- **En un PR** corren `ci-tests`, `image`, `compose` y `notify`. `publish` y `deploy` quedan
+  en *skipped*, así que nada sin mergear llega a GHCR.
+- **En un push a `main`** (o con `workflow_dispatch`) corren los seis jobs.
+- **Smoke test.** `compose` y `deploy` usan el mismo script, `.github/scripts/smoke.sh`.
+- **Imagen publicada:** `ghcr.io/lorenitatl/tc5061-proyecto-equipo02/mibici-api`, visible en
+  la pestaña *Packages* del repositorio.
 
 ### Pruebas de carga con Locust
 

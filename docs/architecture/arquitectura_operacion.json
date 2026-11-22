@@ -1,0 +1,347 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Arquitectura de operación — MiBici Equipo 02",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1375,
+      780
+    ]
+  },
+  "components": [
+    {
+      "id": "ghcr",
+      "type": "cloud",
+      "label": "GHCR (Packages)",
+      "sublabel": "mibici-api",
+      "tag": "sha-<commit> · latest",
+      "brand": "github",
+      "pos": [
+        791,
+        30
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "ci_tests",
+      "type": "backend",
+      "label": "ci-tests",
+      "sublabel": "pytest + cobertura",
+      "tag": "ubuntu · windows · macos",
+      "pos": [
+        40,
+        210
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "image",
+      "type": "backend",
+      "label": "image",
+      "sublabel": "Buildx · caché gha",
+      "tag": "artefacto image.tar",
+      "pos": [
+        256,
+        210
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "compose_ci",
+      "type": "backend",
+      "label": "compose",
+      "sublabel": "up --wait · smoke",
+      "tag": "API_IMAGE=mibici-api:ci",
+      "pos": [
+        472,
+        210
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "publish",
+      "type": "security",
+      "label": "publish",
+      "sublabel": "packages: write",
+      "tag": "push a main · dispatch",
+      "pos": [
+        688,
+        210
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "deploy",
+      "type": "backend",
+      "label": "deploy",
+      "sublabel": "pull · up --wait · smoke",
+      "tag": "API_IMAGE=<ghcr>",
+      "pos": [
+        904,
+        210
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "notify",
+      "type": "external",
+      "label": "notify",
+      "sublabel": "if: always()",
+      "tag": "resumen + comentario PR",
+      "pos": [
+        1120,
+        210
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "locust",
+      "type": "external",
+      "label": "Locust",
+      "sublabel": "load_tests/locustfile.py",
+      "tag": "headless 30 s · 10 usuarios",
+      "pos": [
+        200,
+        500
+      ],
+      "size": [
+        180,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "frontend",
+      "label": "api",
+      "sublabel": "FastAPI · host :8000",
+      "tag": "healthcheck model_loaded",
+      "pos": [
+        688,
+        500
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "mlflow",
+      "type": "backend",
+      "label": "mlflow",
+      "sublabel": "server · host :5001→5000",
+      "tag": "Model Registry",
+      "pos": [
+        930,
+        500
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "seed",
+      "type": "backend",
+      "label": "seed",
+      "sublabel": "seed_model (una vez)",
+      "tag": "alias champion",
+      "pos": [
+        470,
+        660
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "volume",
+      "type": "database",
+      "label": "mibici-mlflow-data",
+      "sublabel": "volumen /mlflow",
+      "tag": "sqlite + artefactos",
+      "pos": [
+        1160,
+        500
+      ],
+      "size": [
+        175,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "GitHub Actions · .github/workflows/ci-cd.yml",
+      "wraps": [
+        "ci_tests",
+        "image",
+        "compose_ci",
+        "publish",
+        "deploy",
+        "notify"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Docker Compose · red mibici-net",
+      "wraps": [
+        "api",
+        "mlflow",
+        "seed",
+        "volume"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "tests-image",
+      "from": "ci_tests",
+      "to": "image",
+      "label": "needs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "image-compose",
+      "from": "image",
+      "to": "compose_ci",
+      "label": "artefacto",
+      "variant": "emphasis"
+    },
+    {
+      "id": "compose-publish",
+      "from": "compose_ci",
+      "to": "publish",
+      "label": "needs",
+      "variant": "emphasis"
+    },
+    {
+      "id": "publish-ghcr",
+      "from": "publish",
+      "to": "ghcr",
+      "label": "docker push",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "ghcr-deploy",
+      "from": "ghcr",
+      "to": "deploy",
+      "label": "docker pull",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "deploy-notify",
+      "from": "deploy",
+      "to": "notify",
+      "label": "needs"
+    },
+    {
+      "id": "compose-system",
+      "from": "compose_ci",
+      "to": "api",
+      "label": "up + smoke",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "deploy-system",
+      "from": "deploy",
+      "to": "api",
+      "label": "up + smoke",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "compose-locust",
+      "from": "compose_ci",
+      "to": "locust",
+      "label": "corre",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "locust-api",
+      "from": "locust",
+      "to": "api",
+      "label": "POST /predict",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-mlflow",
+      "from": "api",
+      "to": "mlflow",
+      "label": "carga champion"
+    },
+    {
+      "id": "seed-mlflow",
+      "from": "seed",
+      "to": "mlflow",
+      "label": "registra",
+      "fromSide": "right",
+      "toSide": "bottom"
+    },
+    {
+      "id": "mlflow-volume",
+      "from": "mlflow",
+      "to": "volume",
+      "label": "persiste"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Pipeline ci-cd.yml",
+      "items": [
+        "PR: ci-tests → image → compose → notify",
+        "push a main y workflow_dispatch: + publish y deploy",
+        "concurrency cancela corridas viejas"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Sistema en Compose",
+      "items": [
+        "Orden: mlflow (sano) → seed → api (sana)",
+        "api sana solo con model_loaded: true",
+        "Una sola imagen para los tres servicios"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Carga y evidencia",
+      "items": [
+        "Locust desde el runner contra :8000",
+        "CSV de Locust y cobertura como artefactos",
+        "logs + down -v con if: always()"
+      ]
+    }
+  ]
+}
