@@ -2149,7 +2149,33 @@ _Pendiente._
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-_Pendiente._
+Las pruebas evalúan el comportamiento de la API y del modelo servido bajo distintos niveles de concurrencia. Locust reproduce una mezcla de solicitudes equivalente a 80 % de predicciones válidas (`POST /predict`), 10 % de consultas de disponibilidad (`GET /health`) y 10 % de predicciones con datos inválidos, para las cuales una respuesta HTTP 422 se considera el resultado esperado.
+
+Se ejecutaron tres escenarios de aproximadamente tres minutos, con 10, 50 y 100 usuarios concurrentes. Durante las pruebas, Docker Compose mantuvo un límite de 1 CPU y 1 GB de memoria por servicio. Las métricas siguientes corresponden exclusivamente a las solicitudes válidas de `POST /predict`.
+
+| Escenario | Usuarios | Duración (s) | Peticiones | Fallas | RPS | p50 (ms) | p95 (ms) | p99 (ms) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| u10 | 10 | 178 | 1,104 | 0 | 6.2148 | 15 | 50 | 68 |
+| u50 | 50 | 177 | 4,955 | 0 | 27.8751 | 72 | 620 | 830 |
+| u100 | 100 | 177 | 5,253 | 0 | 29.6759 | 1,400 | 2,500 | 5,400 |
+
+Los tres escenarios finalizaron sin solicitudes fallidas, reinicios ni eventos de falta de memoria. Sin embargo, la ausencia de errores no implica que el tiempo de respuesta siga siendo adecuado. Entre 50 y 100 usuarios el rendimiento aumentó solamente alrededor de 6.5 %, mientras que el p95 pasó de 620 ms a 2,500 ms y el uso promedio de CPU de la API aumentó de 66.3 % a 93.05 %. Esto indica un punto de saturación entre ambos escenarios.
+
+En las condiciones locales evaluadas, 50 usuarios es el escenario de mayor concurrencia que mantiene un p95 inferior a un segundo. Este resultado caracteriza el entorno de prueba y no constituye un SLA de producción. También se observó que la memoria de la API permaneció estable, mientras que MLflow utilizó cerca de 98 % de su límite de 1 GB, por lo que su asignación de memoria debe revisarse antes de trasladar la solución a un entorno productivo.
+
+Para reproducir los escenarios:
+
+```bash
+make requirements-load
+make compose-up
+make load-test ESCENARIO=u10 USERS=10 SPAWN_RATE=2 DURATION=3m
+make load-test ESCENARIO=u50 USERS=50 SPAWN_RATE=5 DURATION=3m
+make load-test ESCENARIO=u100 USERS=100 SPAWN_RATE=10 DURATION=3m
+make load-report
+make compose-down
+```
+
+Los resultados completos están disponibles en `reports/load_test/`. Cada escenario contiene los archivos generados por Locust y las muestras de recursos de Docker en `stats.jsonl`. El resumen consolidado se encuentra en `reports/load_test/resumen.md` y las gráficas comparativas en `reports/load_test/figures/`.
 
 ### Consumo de recursos
 
@@ -2167,7 +2193,11 @@ _Pendiente._
 
 Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
 
-_Pendiente._
+El equipo dividió la implementación por módulos y responsables, utilizando ramas independientes y pull requests para mantener la trazabilidad. El contrato de operación incorporado en el [PR #116](https://github.com/LorenitaTL/TC5061-Proyecto-Equipo02/pull/116) definió previamente los nombres de servicios, comandos de Make, límites de recursos y rutas compartidas por las pruebas de carga, CI/CD y FinOps.
+
+Las pruebas de carga y la generación de reportes se desarrollaron en la rama `feat/locust-load-report` mediante el [PR #117](https://github.com/LorenitaTL/TC5061-Proyecto-Equipo02/pull/117). Durante el desarrollo, la integración con Docker Compose se verificó en una rama temporal local, sin modificar las ramas de los demás integrantes. Una vez integrado el PR #116 en `main`, la rama de carga se actualizó con esa versión antes de completar la documentación final.
+
+El PR #117 se mantuvo como borrador durante la construcción y validación de los artefactos. Incluye el escenario de Locust, la generación reproducible de payloads, pruebas unitarias, consolidación de métricas, gráficas y los resultados oficiales de los escenarios u10, u50 y u100. Los cambios se sometieron a los checks automatizados de formato, pruebas, seguridad y construcción del contenedor antes de solicitar su revisión.
 
 ## Buenas prácticas
 
