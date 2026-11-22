@@ -21,6 +21,12 @@ requirements:
 	$(MAKE) setup-hooks
 
 
+## Install Locust for the load tests (on top of requirements.txt)
+.PHONY: requirements-load
+requirements-load:
+	$(PYTHON_INTERPRETER) -m pip install -r requirements-load.txt
+
+
 ## Install pre-commit git hooks
 .PHONY: setup-hooks
 setup-hooks:
@@ -82,6 +88,7 @@ VALIDATION_IGNORED_VULNS = --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3
 security-deps:
 	status=0; \
 	pip-audit -r requirements.txt || status=1; \
+	pip-audit -r requirements-load.txt || status=1; \
 	pip-audit -r requirements-validation.txt $(VALIDATION_IGNORED_VULNS) || status=1; \
 	exit $$status
 
@@ -182,6 +189,83 @@ docker-stop:
 
 
 #################################################################################
+# SYSTEM: DOCKER COMPOSE, LOAD TESTS AND FINOPS                                 #
+#################################################################################
+
+# Docker Compose by default; use `make compose-up COMPOSE=podman-compose` for Podman.
+# The services, ports and output files are the "Contrato de operación" in the README.
+COMPOSE ?= docker compose
+STATS_ENGINE ?= docker
+
+## Start MLflow, the seed model and the API with one command (waits until healthy)
+.PHONY: compose-up
+compose-up:
+	$(COMPOSE) up -d --build --wait
+	@echo "API on http://localhost:$(API_PORT), MLflow on http://localhost:$${MLFLOW_PORT:-5001}"
+
+## Stop the system (add COMPOSE_DOWN_FLAGS=-v to also delete the MLflow volume)
+.PHONY: compose-down
+compose-down:
+	$(COMPOSE) down $(COMPOSE_DOWN_FLAGS)
+
+## Follow the logs of every service
+.PHONY: compose-logs
+compose-logs:
+	$(COMPOSE) logs -f
+
+# Load test scenario: make load-test ESCENARIO=u50 USERS=50 SPAWN_RATE=5 DURATION=3m
+ESCENARIO ?= u10
+USERS ?= 10
+SPAWN_RATE ?= 2
+DURATION ?= 3m
+STATS_INTERVAL ?= 2
+LOAD_HOST ?= http://127.0.0.1:$(API_PORT)
+LOAD_DIR = reports/load_test/$(ESCENARIO)
+STATS_FILE = $(LOAD_DIR)/stats.jsonl
+
+# One JSON line per container and sample: {"ts": "<UTC ISO>", "stats": <docker stats JSON>}.
+# Only the containers of this Compose project are sampled.
+STATS_LOOP = while true; do \
+		ts=$$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+		$(STATS_ENGINE) stats --no-stream --format "{\"ts\":\"$$ts\",\"stats\":{{json .}}}" \
+			$$($(COMPOSE) ps -q) >> $(STATS_FILE); \
+		sleep $(STATS_INTERVAL); \
+	done
+
+## Record CPU and memory of the system containers until Ctrl+C (reports/load_test/<ESCENARIO>/stats.jsonl)
+.PHONY: stats
+stats:
+	@mkdir -p $(LOAD_DIR)
+	@echo "Recording $(STATS_ENGINE) stats in $(STATS_FILE) every $(STATS_INTERVAL) s (Ctrl+C to stop)"
+	@$(STATS_LOOP)
+
+## Run a headless Locust scenario against the API and record docker stats at the same time
+.PHONY: load-test
+load-test:
+	@test -f load_tests/locustfile.py || { echo "load_tests/locustfile.py does not exist yet (M1)"; exit 1; }
+	@mkdir -p $(LOAD_DIR)
+	@rm -f $(STATS_FILE)
+	@( $(STATS_LOOP) ) & stats_pid=$$!; \
+	$(PYTHON_INTERPRETER) -m locust -f load_tests/locustfile.py --headless --only-summary \
+		-u $(USERS) -r $(SPAWN_RATE) -t $(DURATION) --host $(LOAD_HOST) \
+		--csv $(LOAD_DIR)/locust --csv-full-history; \
+	status=$$?; kill $$stats_pid 2>/dev/null; \
+	echo "Results in $(LOAD_DIR)/"; exit $$status
+
+## Build the load test charts and reports/load_test/resumen.csv
+.PHONY: load-report
+load-report:
+	@test -f mi_bici/operations/load_report.py || { echo "mi_bici/operations/load_report.py does not exist yet (M2)"; exit 1; }
+	$(PYTHON_INTERPRETER) -m mi_bici.operations.load_report
+
+## Estimate the cost per inference (reports/finops/costos.csv)
+.PHONY: finops
+finops:
+	@test -f mi_bici/operations/finops.py || { echo "mi_bici/operations/finops.py does not exist yet (E2)"; exit 1; }
+	$(PYTHON_INTERPRETER) -m mi_bici.operations.finops
+
+
+#################################################################################
 # Self Documenting Commands                                                     #
 #################################################################################
 
@@ -190,7 +274,7 @@ docker-stop:
 define PRINT_HELP_PYSCRIPT
 import re, sys; \
 lines = '\n'.join([line for line in sys.stdin]); \
-matches = re.findall(r'\n## (.*)\n[\s\S]+?\n([a-zA-Z_-]+):', lines); \
+matches = re.findall(r'\n## (.*)\n[\s\S]+?\n([a-zA-Z0-9_-]+):', lines); \
 print('Available rules:\n'); \
 print('\n'.join(['{:25}{}'.format(*reversed(match)) for match in matches]))
 endef

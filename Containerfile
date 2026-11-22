@@ -29,9 +29,12 @@ COPY pyproject.toml README.md LICENSE ./
 COPY mi_bici/ mi_bici/
 RUN pip install --no-deps -e .
 
-# Usuario sin privilegios
+# Usuario sin privilegios. /mlflow es donde el servicio mlflow de docker-compose.yml guarda
+# su base y sus artefactos: un volumen vacío copia el dueño de este directorio, así que el
+# usuario app puede escribir en él.
 RUN useradd --create-home --uid 1000 app \
-    && chown -R app:app /app
+    && mkdir -p /mlflow \
+    && chown -R app:app /app /mlflow
 USER app
 
 EXPOSE 8000

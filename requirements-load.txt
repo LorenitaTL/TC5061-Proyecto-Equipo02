@@ -1,0 +1,4 @@
+# Pruebas de carga con Locust (make load-test). Va aparte de requirements.txt para no
+# instalar Locust ni gevent en la imagen de la API: el Containerfile solo instala
+# requirements.txt. Se instala encima del entorno del proyecto: make requirements-load.
+locust==2.47.0

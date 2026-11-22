@@ -1974,6 +1974,201 @@ servidor:
    levantar varias réplicas detrás de un balanceador; cada una carga el mismo modelo del
    Registry al arrancar.
 
+## Operación del sistema
+
+En esta sección (Actividad 9) la API contenerizada se convierte en un sistema completo:
+se levanta con un solo comando (Docker Compose), se prueba y despliega de forma automática
+(GitHub Actions), se mide bajo carga (Locust y `docker stats`) y se estima cuánto cuesta
+operarlo (FinOps).
+
+| Subsección | Responsable |
+| :--- | :--- |
+| [Cómo levantar el sistema](#cómo-levantar-el-sistema), [Contrato de operación](#contrato-de-operación) y [Orquestación con Docker Compose](#orquestación-con-docker-compose) | [@LorenitaTL](https://github.com/LorenitaTL) |
+| [Arquitectura](#arquitectura) y [Pipeline de CI/CD](#pipeline-de-cicd) | [@clsrivas](https://github.com/clsrivas) |
+| [Pruebas de carga con Locust](#pruebas-de-carga-con-locust) y [Trabajo colaborativo](#trabajo-colaborativo) | [@MelizaMartinez98](https://github.com/MelizaMartinez98) |
+| [Consumo de recursos](#consumo-de-recursos) y [Análisis FinOps](#análisis-finops) | [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96) |
+
+### Cómo levantar el sistema
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+Requisitos: Docker con Docker Compose v2 (Docker Desktop en macOS y Windows). No hace falta
+`mlflow.db` ni ningún dato: el sistema registra su propio modelo al arrancar.
+
+```bash
+make compose-up          # docker compose up -d --build --wait
+curl localhost:8000/health
+```
+
+`make compose-up` construye la imagen, levanta los tres servicios y espera a que estén sanos.
+La primera vez tarda unos minutos (construcción de la imagen y entrenamiento del modelo
+semilla); después, unos segundos. Cuando termina:
+
+| Qué | Dónde |
+| :--- | :--- |
+| API (documentación interactiva) | <http://localhost:8000/docs> |
+| Interfaz de MLflow | <http://localhost:5001> |
+
+Una predicción con el ejemplo del contrato (ver [`POST /predict`](#post-predict)):
+
+```bash
+curl -X POST localhost:8000/predict -H "Content-Type: application/json" -d '{
+  "departures": 4.0, "arrivals": 3.0, "net_flow": 1.0, "absolute_imbalance": 1.0,
+  "imbalance_ratio": 0.0667, "capacity": 15, "latitude": 20.682, "longitude": -103.35,
+  "hour_of_day": 12, "day_of_week": 3, "is_weekend": 0, "hour_sin": 0.0, "hour_cos": -1.0,
+  "dow_sin": 0.4339, "dow_cos": -0.901, "departures_lag_1h": 3.0, "departures_lag_2h": 2.0,
+  "departures_lag_24h": 5.0, "departures_rolling_3h": 2.3333, "departures_rolling_24h": 1.9167,
+  "arrivals_lag_1h": 3.0, "arrivals_lag_2h": 1.0, "arrivals_lag_24h": 3.0,
+  "arrivals_rolling_3h": 1.6667, "arrivals_rolling_24h": 2.1667, "net_flow_lag_1h": 0.0,
+  "net_flow_lag_2h": 1.0, "net_flow_lag_24h": 2.0, "net_flow_rolling_3h": 0.6667,
+  "net_flow_rolling_24h": -0.25}'
+```
+
+Otros comandos:
+
+```bash
+make compose-logs                          # logs de los tres servicios
+make compose-down                          # detiene el sistema; el registro de MLflow se conserva
+make compose-down COMPOSE_DOWN_FLAGS=-v    # también borra el volumen de MLflow
+```
+
+Los puertos, la imagen y los límites de recursos se cambian con variables de entorno o en un
+`.env` en la raíz (ver `.env.example`), por ejemplo `API_PORT=8080 make compose-up`. Si
+`make compose-up` falla con `port is already allocated`, otro proceso o contenedor ocupa ese
+puerto: usa otro, por ejemplo `MLFLOW_PORT=5002 make compose-up`. Con
+Podman: `make compose-up COMPOSE=podman-compose`. En Windows sin `make`, los mismos comandos
+son `docker compose up -d --build --wait` y `docker compose down`.
+
+### Contrato de operación
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+Nombres, rutas y formatos que comparten Compose, el CI, las pruebas de carga y el análisis
+FinOps. Cada parte del sistema se desarrolla contra este contrato, sin esperar a las demás.
+
+| Elemento | Valor |
+| :--- | :--- |
+| Servicios de Compose | `mlflow` (host `${MLFLOW_PORT:-5001}` → 5000), `seed` (una sola ejecución), `api` (host `${API_PORT:-8000}` → 8000); red `mibici-net`; volumen `mibici-mlflow-data` |
+| Imagen | `${API_IMAGE:-mibici-api:local}`, la misma para los tres servicios; en GHCR: `ghcr.io/lorenitatl/tc5061-proyecto-equipo02/mibici-api` |
+| Levantar y bajar | `make compose-up`, `make compose-down`, `make compose-logs`; `COMPOSE ?= docker compose` |
+| Dependencias de carga | `requirements-load.txt` (Locust), fuera de la imagen; se instala con `make requirements-load` |
+| Locustfile | `load_tests/locustfile.py` |
+| Corrida de carga | `make load-test ESCENARIO=u10 USERS=10 SPAWN_RATE=2 DURATION=3m` → `reports/load_test/u10/locust_stats.csv`, `locust_stats_history.csv`, `locust_failures.csv` y `stats.jsonl` |
+| `stats.jsonl` | `make stats` o `make load-test`: una línea por contenedor y muestra cada 2 s, `{"ts": "<ISO UTC>", "stats": <JSON de docker stats>}` |
+| `resumen.csv` | `make load-report` → `reports/load_test/resumen.csv`, solo `POST /predict`: `escenario, usuarios, duracion_s, peticiones, fallas, tasa_error, rps, p50_ms, p95_ms, p99_ms` |
+| `stats_resumen.csv` | `reports/load_test/<escenario>/stats_resumen.csv`: `contenedor, cpu_pct_prom, cpu_pct_p95, mem_mib_prom, mem_mib_p95, mem_limite_mib` |
+| FinOps | `make finops` → `reports/finops/costos.csv` y `costos.md`; precios en `references/finops_precios.json` |
+| Código | `mi_bici/operations/` (`seed_model.py`, `load_payloads.py`, `load_report.py`, `resource_stats.py`, `finops.py`); pruebas en `tests/test_<módulo>.py` |
+
+### Arquitectura
+
+Responsable: [@clsrivas](https://github.com/clsrivas).
+
+_Pendiente._
+
+### Orquestación con Docker Compose
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+`docker-compose.yml` define tres servicios que usan la misma imagen del `Containerfile`, así
+que comparten las versiones fijadas en `requirements.txt`. Solo `api` la construye; `mlflow` y
+`seed` la reutilizan (`pull_policy: never`), así que se construye una sola vez:
+
+| Servicio | Qué hace | Arranca cuando | Sano cuando |
+| :--- | :--- | :--- | :--- |
+| `mlflow` | Servidor de MLflow: base SQLite y artefactos en el volumen `mibici-mlflow-data` (`/mlflow`), servidos por HTTP (`--serve-artifacts`) | Primero | `GET /health` responde |
+| `seed` | Registra el [modelo semilla](#modelo-semilla) como `mibici-equipo02-p2-riesgo@champion` y termina | `mlflow` está sano | Termina con código 0 |
+| `api` | La API REST de la Actividad 8, con `MLFLOW_TRACKING_URI=http://mlflow:5000` | `seed` terminó bien | `GET /health` devuelve `model_loaded: true` |
+
+Configuración:
+
+- **Red:** `mibici-net`. La API y la semilla llaman a MLflow por el nombre del servicio
+  (`http://mlflow:5000`); desde el host solo se publican los puertos de la API y de la interfaz
+  de MLflow.
+- **Volumen:** `mibici-mlflow-data` conserva el registro entre reinicios. Como la semilla es
+  idempotente, un segundo `make compose-up` no registra otra versión.
+- **Variables de entorno:** puertos, imagen, modelo (`MODEL_NAME`, `MODEL_ALIAS`,
+  `MODEL_VERSION`) y límites de recursos, todas con valor por omisión (ver `.env.example`).
+- **Healthchecks y orden de arranque:** `depends_on` con `service_healthy` y
+  `service_completed_successfully`. El healthcheck de la API exige `model_loaded: true`, no solo
+  que el proceso responda, así que `make compose-up` falla si la API arranca sin modelo.
+- **Límites de recursos:** 1 CPU y 1 GB por servicio (`API_CPUS`, `API_MEMORY`, `MLFLOW_CPUS`,
+  `MLFLOW_MEMORY`). Fijan el tamaño de "instancia" que se mide en las pruebas de carga y que usa
+  el [análisis FinOps](#análisis-finops).
+- **Reinicio:** `mlflow` y `api` se reinician solos si fallan (`restart: unless-stopped`);
+  `seed` no.
+- **Seguridad:** los tres contenedores corren con el usuario sin privilegios `app` del
+  `Containerfile`. MLflow solo acepta los Host `mlflow`, `localhost` y `127.0.0.1`
+  (`--allowed-hosts`), y responde 403 a cualquier otro.
+- **Un solo worker de MLflow** (`--workers=1`): el servidor solo atiende a la semilla y a la API
+  al arrancar, así que más workers solo consumirían memoria.
+
+#### Modelo semilla
+
+Responsable: [@LorenitaTL](https://github.com/LorenitaTL).
+
+`mlflow.db` y `mlartifacts/` no están en Git, así que en un clon limpio o en GitHub Actions no
+hay modelo que servir. `mi_bici/operations/seed_model.py` entrena el pipeline de P2 con los
+hiperparámetros del champion (HistGradientBoosting, `learning_rate=0.10`, `max_iter=200`,
+umbral `0.35`) sobre 5,000 filas sintéticas con las mismas 30 columnas y las mismas relaciones
+entre ellas (`net_flow = departures - arrivals`, etc.), y lo registra con el alias `champion`.
+Tarda unos segundos.
+
+**Es un modelo para operar el sistema y medir la carga, no para decidir.** Como tiene el mismo
+pipeline, las mismas columnas y los mismos hiperparámetros que el modelo real, la latencia y el
+consumo de recursos son representativos; sus predicciones no. Su versión lleva la etiqueta
+`origen=seed-sintetico` en el Model Registry.
+
+```bash
+python -m mi_bici.operations.seed_model                          # usa MLFLOW_TRACKING_URI
+python -m mi_bici.operations.seed_model --tracking-uri http://localhost:5001 --force
+```
+
+Si el alias ya existe, no hace nada; `--force` registra una versión nueva y le mueve el alias.
+Las pruebas están en `tests/test_seed_model.py`: las filas sintéticas son entradas válidas de
+`POST /predict`, el registro es idempotente y el modelo registrado se carga con el mismo
+`load_p2_model` que usa la API.
+
+**Servir el modelo real.** `docker-compose.local.yml` monta tu `mlflow.db` y `mlartifacts/` en
+el servicio `mlflow` en lugar del volumen. El registro guarda los artefactos como
+`mlflow-artifacts:/...`, relativos al servidor, así que basta montar `mlartifacts/` como su
+`--artifacts-destination`; la API descarga el modelo a través del servidor. Como el alias
+`champion` ya existe, la semilla no registra nada:
+
+```bash
+make compose-up COMPOSE="docker compose -f docker-compose.yml -f docker-compose.local.yml"
+```
+
+### Pipeline de CI/CD
+
+Responsable: [@clsrivas](https://github.com/clsrivas).
+
+_Pendiente._
+
+### Pruebas de carga con Locust
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
+### Consumo de recursos
+
+Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+### Análisis FinOps
+
+Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
+
+_Pendiente._
+
+### Trabajo colaborativo
+
+Responsable: [@MelizaMartinez98](https://github.com/MelizaMartinez98).
+
+_Pendiente._
+
 ## Buenas prácticas
 
 - **Experimento único y runs con nombre descriptivo:** P1, P2 y P3 registran en
@@ -2005,20 +2200,26 @@ servidor:
 
 ```
 ├── LICENSE
-├── Makefile           <- Comandos de entorno, lint, pruebas e ingesta
+├── Makefile           <- Comandos de entorno, lint, pruebas e ingesta, Compose y carga
+├── docker-compose.yml <- Sistema: MLflow, modelo semilla y API
+├── docker-compose.local.yml <- Override para servir el registro local real
 ├── README.md
 ├── data               <- Excluida de Git
 │   ├── external       <- Catálogo original de estaciones
 │   ├── processed      <- Viajes normalizados (Parquet) y datasets de P1 y P2
 │   └── raw            <- CSV mensuales originales
 ├── docs               <- Proyecto mkdocs y documentación de P1
+├── load_tests         <- Locustfile de las pruebas de carga
 ├── models             <- Modelos locales de P2 (excluidos de Git)
 ├── notebooks          <- Exploración: 1.0-evg-feature_engineering_p2, 1.0-lt-perfiles-estaciones
 ├── pyproject.toml     <- Metadatos del paquete y configuración de ruff
 ├── references         <- ML Canvas, arquitectura, manifiesto de datos y reporte de calidad
 ├── reports
-│   └── figures
+│   ├── figures
+│   ├── finops         <- Costo por inferencia
+│   └── load_test      <- Resultados de Locust y docker stats por escenario
 ├── requirements.txt   <- Dependencias con versión fija
+├── requirements-load.txt <- Locust, fuera de la imagen de la API
 ├── tests              <- Pruebas de pytest
 └── mi_bici            <- Código del proyecto
     ├── config.py          <- Rutas, fechas, semilla y configuración de MLflow
@@ -2030,6 +2231,8 @@ servidor:
     ├── features_p1.py     <- Dataset estación-hora de P1
     ├── features_p2.py     <- Dataset estación-hora de P2
     ├── features_p3.py     <- Perfiles de uso por estación de P3
+    ├── operations
+    │   └── seed_model.py  <- Modelo semilla de P2 para Compose y el CI
     └── modeling
         ├── train.py           <- Punto de entrada de entrenamiento del MLflow Project
         ├── tracking.py        <- Experimento y trazabilidad comunes de MLflow
