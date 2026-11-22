@@ -441,8 +441,10 @@ def write_e3_markdown_report(
             "",
             "## Análisis FinOps",
             "",
-            "El volumen de referencia corresponde a 374 estaciones "
-            "con una predicción horaria por estación:",
+            (
+                "El volumen de referencia corresponde a 374 estaciones "
+                "con una predicción horaria por estación:"
+            ),
             "",
             "**374 × 24 = 8,976 inferencias/día.**",
             "",
@@ -450,14 +452,18 @@ def write_e3_markdown_report(
             "",
             "**8,976 × 10 = 89,760 inferencias/día.**",
             "",
-            "El RPS promedio requerido para procesar este volumen "
-            "continuamente durante 24 horas es aproximadamente:",
+            (
+                "El RPS promedio requerido para procesar este volumen "
+                "continuamente durante 24 horas es aproximadamente:"
+            ),
             "",
             "**89,760 / 86,400 = 1.0389 RPS.**",
             "",
-            "Las réplicas necesarias se calculan comparando este "
-            "RPS objetivo con el RPS medido experimentalmente "
-            "para cada escenario de carga.",
+            (
+                "Las réplicas necesarias se calculan comparando este "
+                "RPS objetivo con el RPS medido experimentalmente "
+                "para cada escenario de carga."
+            ),
             "",
         ]
     )
@@ -514,45 +520,61 @@ def write_e3_markdown_report(
             "",
             "El escenario u50 alcanza aproximadamente 27.88 RPS con un P95 de latencia de 620 ms.",
             "",
-            "Al aumentar la carga hasta u100, el throughput "
-            "solo aumenta hasta aproximadamente 29.68 RPS, "
-            "mientras que el P95 aumenta hasta 2,500 ms.",
+            (
+                "Al aumentar la carga hasta u100, el throughput "
+                "solo aumenta hasta aproximadamente 29.68 RPS, "
+                "mientras que el P95 aumenta hasta 2,500 ms."
+            ),
             "",
-            "Esto indica que la API comienza a saturarse "
-            "alrededor de 30 RPS bajo la configuración evaluada.",
+            (
+                "Esto indica que la API comienza a saturarse "
+                "alrededor de 30 RPS bajo la configuración evaluada."
+            ),
             "",
-            "El consumo de CPU de la API aumenta de forma "
-            "importante con la carga: el promedio pasa de "
-            "15.7% en u10 a 66.3% en u50 y 93.1% en u100.",
+            (
+                "El consumo de CPU de la API aumenta de forma "
+                "importante con la carga: el promedio pasa de "
+                "15.7% en u10 a 66.3% en u50 y 93.1% en u100."
+            ),
             "",
-            "El CPU p95 alcanza aproximadamente 107.2% en u100, "
-            "lo que indica que la configuración actual se "
-            "encuentra bajo presión de CPU al acercarse a "
-            "30 RPS.",
+            (
+                "El CPU p95 alcanza aproximadamente 107.2% en u100, "
+                "lo que indica que la configuración actual se "
+                "encuentra bajo presión de CPU al acercarse a "
+                "30 RPS."
+            ),
             "",
-            "El consumo de memoria de la API permanece "
-            "relativamente estable, alrededor de 224–242 MiB "
-            "promedio, por lo que CPU y latencia constituyen "
-            "los principales indicadores de saturación de la API.",
+            (
+                "El consumo de memoria de la API permanece "
+                "relativamente estable, alrededor de 224–242 MiB "
+                "promedio, por lo que CPU y latencia constituyen "
+                "los principales indicadores de saturación de la API."
+            ),
             "",
-            "El contenedor de MLflow presenta un consumo de "
-            "memoria cercano al límite configurado de 1 GiB. "
-            "Esto representa un riesgo de capacidad que debe "
-            "considerarse en futuras optimizaciones, aunque "
-            "los datos disponibles no permiten atribuirle "
-            "directamente la latencia observada en la API.",
+            (
+                "El contenedor de MLflow presenta un consumo de "
+                "memoria cercano al límite configurado de 1 GiB. "
+                "Esto representa un riesgo de capacidad que debe "
+                "considerarse en futuras optimizaciones, aunque "
+                "los datos disponibles no permiten atribuirle "
+                "directamente la latencia observada en la API."
+            ),
             "",
-            "El volumen de 8,976 inferencias/día es un supuesto "
-            "de dimensionamiento basado en 374 estaciones y "
-            "una predicción horaria por estación; no representa "
-            "un volumen oficial declarado por MiBici.",
+            (
+                "El volumen de 8,976 inferencias/día es un supuesto "
+                "de dimensionamiento basado en 374 estaciones y "
+                "una predicción horaria por estación; no representa "
+                "un volumen oficial declarado por MiBici."
+            ),
             "",
-            "El cálculo de costo 24/7 representa el costo de "
-            "mantener las réplicas encendidas durante 730 horas "
-            "mensuales. El costo por inferencia representa una "
-            "métrica de eficiencia basada en el RPS medido y "
-            "no debe interpretarse como el costo de una instancia "
-            "encendida continuamente.",
+            (
+                "El cálculo de costo 24/7 representa el costo de "
+                "mantener las réplicas encendidas durante 730 horas "
+                "mensuales. El costo por inferencia representa una "
+                "métrica de eficiencia basada en el RPS medido y "
+                "no debe interpretarse como el costo de una instancia "
+                "encendida continuamente."
+            ),
             "",
         ]
     )
@@ -685,14 +707,18 @@ def write_markdown_report(
             "",
             "## Interpretación",
             "",
-            "El costo por inferencia se obtiene dividiendo el costo "
-            "horario entre la capacidad efectiva de inferencia. "
-            "La capacidad efectiva considera el RPS medido y el "
-            "porcentaje de utilización seleccionado.",
+            (
+                "El costo por inferencia se obtiene dividiendo el costo "
+                "horario entre la capacidad efectiva de inferencia. "
+                "La capacidad efectiva considera el RPS medido y el "
+                "porcentaje de utilización seleccionado."
+            ),
             "",
-            "Estos valores son estimaciones de cómputo y no incluyen "
-            "almacenamiento, transferencia de datos, balanceadores, "
-            "bases de datos, observabilidad ni impuestos.",
+            (
+                "Estos valores son estimaciones de cómputo y no incluyen "
+                "almacenamiento, transferencia de datos, balanceadores, "
+                "bases de datos, observabilidad ni impuestos."
+            ),
             "",
         ]
     )
