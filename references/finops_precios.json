@@ -1,0 +1,42 @@
+{
+  "metadata": {
+    "currency": "USD",
+    "billing_model": "on_demand",
+    "operating_system": "Linux",
+    "hours_per_month": 730,
+    "last_updated": "2026-11-21",
+    "notes": "Precios de referencia para el análisis FinOps. No incluyen almacenamiento, transferencia de datos, impuestos ni otros servicios."
+  },
+  "instances": [
+    {
+      "provider": "AWS",
+      "name": "t3.medium",
+      "region": "us-east-1",
+      "price_per_hour": 0.0416,
+      "vcpu": 2,
+      "memory_gb": 4,
+      "source": "AWS EC2 On-Demand Pricing / AWS Prescriptive Guidance",
+      "source_url": "https://aws.amazon.com/ec2/pricing/on-demand/"
+    },
+    {
+      "provider": "AWS",
+      "name": "c6i.large",
+      "region": "us-east-1",
+      "price_per_hour": 0.085,
+      "vcpu": 2,
+      "memory_gb": 4,
+      "source": "AWS Architecture Blog / EC2 pricing reference",
+      "source_url": "https://aws.amazon.com/ec2/pricing/on-demand/"
+    },
+    {
+      "provider": "GCP",
+      "name": "e2-standard-2",
+      "region": "us-central1",
+      "price_per_hour": 0.067,
+      "vcpu": 2,
+      "memory_gb": 8,
+      "source": "Google Cloud Compute Engine pricing reference",
+      "source_url": "https://cloud.google.com/compute/all-pricing"
+    }
+  ]
+}
