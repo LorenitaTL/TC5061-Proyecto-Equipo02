@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 from pathlib import Path
+import re
 
 import matplotlib.pyplot as plt
 import pandas as pd
-
 
 _UNIT_TO_MIB = {
     "b": 1 / (1024**2),
@@ -22,7 +21,7 @@ _UNIT_TO_MIB = {
 }
 
 
-def _parse_size_to_mib(value: str | float | int | None) -> float:
+def _parse_size_to_mib(value: str | float | None) -> float:
     """Convert a Docker size string to MiB."""
     if value is None:
         return float("nan")
@@ -52,7 +51,7 @@ def _parse_size_to_mib(value: str | float | int | None) -> float:
     return number * _UNIT_TO_MIB[unit]
 
 
-def _parse_percentage(value: str | float | int | None) -> float:
+def _parse_percentage(value: str | float | None) -> float:
     """Convert a percentage such as '15.40%' to a float."""
     if value is None:
         return float("nan")
@@ -143,25 +142,16 @@ def parse_stats(jsonl: str | Path) -> pd.DataFrame:
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"Invalid JSON in {path} at line {line_number}"
-                ) from exc
+                raise ValueError(f"Invalid JSON in {path} at line {line_number}") from exc
 
             stats = record.get("stats", {})
 
             if not stats:
-                raise ValueError(
-                    f"Missing 'stats' object in {path} "
-                    f"at line {line_number}"
-                )
+                raise ValueError(f"Missing 'stats' object in {path} at line {line_number}")
 
-            memory_mib, memory_limit_mib = _parse_memory_usage(
-                stats.get("MemUsage")
-            )
+            memory_mib, memory_limit_mib = _parse_memory_usage(stats.get("MemUsage"))
 
-            net_rx_mib, net_tx_mib = _parse_network(
-                stats.get("NetIO")
-            )
+            net_rx_mib, net_tx_mib = _parse_network(stats.get("NetIO"))
 
             rows.append(
                 {
@@ -170,13 +160,9 @@ def parse_stats(jsonl: str | Path) -> pd.DataFrame:
                         utc=True,
                     ),
                     "contenedor": stats.get("Name"),
-                    "cpu_pct": _parse_percentage(
-                        stats.get("CPUPerc")
-                    ),
+                    "cpu_pct": _parse_percentage(stats.get("CPUPerc")),
                     "mem_mib": memory_mib,
-                    "mem_pct": _parse_percentage(
-                        stats.get("MemPerc")
-                    ),
+                    "mem_pct": _parse_percentage(stats.get("MemPerc")),
                     "mem_limit_mib": memory_limit_mib,
                     "net_rx_mib": net_rx_mib,
                     "net_tx_mib": net_tx_mib,
@@ -321,9 +307,7 @@ def generate_report(
 
 def main() -> None:
     """Command-line interface for resource statistics."""
-    parser = argparse.ArgumentParser(
-        description="Parse and summarize Docker resource statistics."
-    )
+    parser = argparse.ArgumentParser(description="Parse and summarize Docker resource statistics.")
 
     parser.add_argument(
         "jsonl",

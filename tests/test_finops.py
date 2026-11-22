@@ -1,7 +1,5 @@
 """Tests for FinOps calculations."""
 
-import json
-
 import pytest
 
 from mi_bici.operations.finops import (
@@ -69,15 +67,21 @@ def test_monthly_cost():
 
 
 def test_replicas_needed():
-    assert replicas_needed(
-        target_rps=25,
-        rps_per_replica=10,
-    ) == 3
+    assert (
+        replicas_needed(
+            target_rps=25,
+            rps_per_replica=10,
+        )
+        == 3
+    )
 
-    assert replicas_needed(
-        target_rps=20,
-        rps_per_replica=10,
-    ) == 2
+    assert (
+        replicas_needed(
+            target_rps=20,
+            rps_per_replica=10,
+        )
+        == 2
+    )
 
 
 def test_resource_cost_per_hour():

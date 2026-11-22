@@ -9,18 +9,9 @@ from pathlib import Path
 
 import pandas as pd
 
+DEFAULT_PRICES = Path(__file__).resolve().parents[2] / "references" / "finops_precios.json"
 
-DEFAULT_PRICES = (
-    Path(__file__).resolve().parents[2]
-    / "references"
-    / "finops_precios.json"
-)
-
-DEFAULT_OUTPUT_DIR = (
-    Path(__file__).resolve().parents[2]
-    / "reports"
-    / "finops"
-)
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parents[2] / "reports" / "finops"
 
 DEFAULT_LOAD_TEST_DIR = Path(__file__).resolve().parents[2] / "reports" / "load_test"
 
@@ -80,11 +71,14 @@ def cost_per_1k(
     utilization: float = 1.0,
 ) -> float:
     """Calculate the cost of 1,000 inferences."""
-    return cost_per_inference(
-        price_per_hour=price_per_hour,
-        rps=rps,
-        utilization=utilization,
-    ) * 1000
+    return (
+        cost_per_inference(
+            price_per_hour=price_per_hour,
+            rps=rps,
+            utilization=utilization,
+        )
+        * 1000
+    )
 
 
 def monthly_cost(
@@ -149,10 +143,7 @@ def resource_cost_per_hour(
     _validate_positive("vcpu_price_per_hour", vcpu_price_per_hour)
     _validate_positive("gb_price_per_hour", gb_price_per_hour)
 
-    return (
-        vcpu * vcpu_price_per_hour
-        + memory_gb * gb_price_per_hour
-    )
+    return vcpu * vcpu_price_per_hour + memory_gb * gb_price_per_hour
 
 
 def load_prices(path: str | Path = DEFAULT_PRICES) -> dict:
@@ -186,9 +177,7 @@ def load_load_test_results(
     resumen_path = load_test_dir / "resumen.csv"
 
     if not resumen_path.exists():
-        raise FileNotFoundError(
-            f"Load-test summary not found: {resumen_path}"
-        )
+        raise FileNotFoundError(f"Load-test summary not found: {resumen_path}")
 
     performance = pd.read_csv(resumen_path)
 
@@ -203,36 +192,24 @@ def load_load_test_results(
     missing = required_columns - set(performance.columns)
 
     if missing:
-        raise ValueError(
-            f"resumen.csv is missing columns: {sorted(missing)}"
-        )
+        raise ValueError(f"resumen.csv is missing columns: {sorted(missing)}")
 
     rows = []
 
     for _, result in performance.iterrows():
         escenario = result["escenario"]
 
-        stats_path = (
-            load_test_dir
-            / str(escenario)
-            / "stats_resumen.csv"
-        )
+        stats_path = load_test_dir / str(escenario) / "stats_resumen.csv"
 
         if not stats_path.exists():
-            raise FileNotFoundError(
-                f"Resource summary not found: {stats_path}"
-            )
+            raise FileNotFoundError(f"Resource summary not found: {stats_path}")
 
         stats = pd.read_csv(stats_path)
 
-        api = stats[
-            stats["contenedor"] == "mibici-api-1"
-        ]
+        api = stats[stats["contenedor"] == "mibici-api-1"]
 
         if api.empty:
-            raise ValueError(
-                f"mibici-api-1 not found in {stats_path}"
-            )
+            raise ValueError(f"mibici-api-1 not found in {stats_path}")
 
         api = api.iloc[0]
 
@@ -254,6 +231,7 @@ def load_load_test_results(
         )
 
     return pd.DataFrame(rows)
+
 
 def monthly_instance_cost(
     price_per_hour: float,
@@ -297,18 +275,14 @@ def build_e3_finops_report(
     load_results = load_load_test_results(load_test_dir)
 
     if load_results.empty:
-        raise ValueError(
-            f"No se encontraron resultados de carga en {load_test_dir}"
-        )
+        raise ValueError(f"No se encontraron resultados de carga en {load_test_dir}")
 
     # Validaciones
 
-
-# Validaciones
+    # Validaciones
     _validate_positive("price_per_hour", price_per_hour)
     _validate_positive("daily_volume", daily_volume)
     _validate_positive("stress_multiplier", stress_multiplier)
-
 
     _validate_utilization(utilization)
 
@@ -329,7 +303,6 @@ def build_e3_finops_report(
     rows = []
 
     for _, result in load_results.iterrows():
-
         measured_rps = float(result["rps"])
 
         # Costo unitario basado en la capacidad medida.
@@ -366,17 +339,14 @@ def build_e3_finops_report(
                 "mem_mib_prom": result["mem_mib_prom"],
                 "mem_mib_p95": result["mem_mib_p95"],
                 "mem_limite_mib": result["mem_limite_mib"],
-
                 # Volumen MiBici
                 "inferencias_dia": daily_volume,
                 "inferencias_mes": monthly_volume,
                 "inferencias_dia_10x": daily_volume_10x,
                 "inferencias_mes_10x": monthly_volume_10x,
-
                 # RPS requerido
                 "target_rps": target_rps,
                 "target_rps_10x": target_rps_10x,
-
                 # Costos unitarios
                 "costo_inferencia_usd": cost_inference,
                 "costo_1000_usd": cost_per_1k(
@@ -384,18 +354,11 @@ def build_e3_finops_report(
                     rps=measured_rps,
                     utilization=utilization,
                 ),
-
                 # Costo basado en volumen de inferencias
-                "costo_mes_usd": (
-                    monthly_volume * cost_inference
-                ),
-                "costo_mes_10x_usd": (
-                    monthly_volume_10x * cost_inference
-                ),
-
+                "costo_mes_usd": (monthly_volume * cost_inference),
+                "costo_mes_10x_usd": (monthly_volume_10x * cost_inference),
                 # Escalabilidad real
                 "replicas_10x": replicas_10x,
-
                 # Infraestructura encendida 24/7
                 "costo_24x7_mes_usd": cost_24x7_month,
             }
@@ -457,28 +420,17 @@ def write_e3_markdown_report(
     ]
 
     for column in numeric_columns:
-        performance_table[column] = performance_table[column].map(
-            lambda value: f"{value:.4f}"
-        )
+        performance_table[column] = performance_table[column].map(lambda value: f"{value:.4f}")
 
     headers = list(performance_table.columns)
 
-    lines.append(
-        "| " + " | ".join(headers) + " |"
-    )
-    lines.append(
-        "| " + " | ".join(["---"] * len(headers)) + " |"
-    )
+    lines.append("| " + " | ".join(headers) + " |")
+    lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
     for _, row in performance_table.iterrows():
-        values = [
-            str(row[column])
-            for column in headers
-        ]
+        values = [str(row[column]) for column in headers]
 
-        lines.append(
-            "| " + " | ".join(values) + " |"
-        )
+        lines.append("| " + " | ".join(values) + " |")
 
     # ---------------------------------------------------------
     # FinOps
@@ -535,32 +487,19 @@ def write_e3_markdown_report(
 
     for column in numeric_columns:
         if column == "costo_inferencia_usd":
-            finops_table[column] = finops_table[column].map(
-                lambda value: f"{value:.8f}"
-            )
+            finops_table[column] = finops_table[column].map(lambda value: f"{value:.8f}")
         else:
-            finops_table[column] = finops_table[column].map(
-                lambda value: f"{value:.6f}"
-            )
+            finops_table[column] = finops_table[column].map(lambda value: f"{value:.6f}")
 
     headers = list(finops_table.columns)
 
-    lines.append(
-        "| " + " | ".join(headers) + " |"
-    )
-    lines.append(
-        "| " + " | ".join(["---"] * len(headers)) + " |"
-    )
+    lines.append("| " + " | ".join(headers) + " |")
+    lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
     for _, row in finops_table.iterrows():
-        values = [
-            str(row[column])
-            for column in headers
-        ]
+        values = [str(row[column]) for column in headers]
 
-        lines.append(
-            "| " + " | ".join(values) + " |"
-        )
+        lines.append("| " + " | ".join(values) + " |")
 
     # ---------------------------------------------------------
     # Interpretación
@@ -571,11 +510,9 @@ def write_e3_markdown_report(
             "",
             "## Interpretación",
             "",
-            "El escenario u10 alcanza aproximadamente "
-            "6.21 RPS con un P95 de latencia de 50 ms.",
+            "El escenario u10 alcanza aproximadamente 6.21 RPS con un P95 de latencia de 50 ms.",
             "",
-            "El escenario u50 alcanza aproximadamente "
-            "27.88 RPS con un P95 de latencia de 620 ms.",
+            "El escenario u50 alcanza aproximadamente 27.88 RPS con un P95 de latencia de 620 ms.",
             "",
             "Al aumentar la carga hasta u100, el throughput "
             "solo aumenta hasta aproximadamente 29.68 RPS, "
@@ -629,6 +566,7 @@ def write_e3_markdown_report(
         "\n".join(lines),
         encoding="utf-8",
     )
+
 
 def build_cost_report(
     prices: dict,
@@ -717,10 +655,7 @@ def write_markdown_report(
     ]
 
     for column in numeric_columns:
-        table[column] = table[column].map(
-            lambda value: f"{value:.8f}"
-        )
-
+        table[column] = table[column].map(lambda value: f"{value:.8f}")
 
     headers = list(table.columns)
 
@@ -730,9 +665,6 @@ def write_markdown_report(
     for _, row in table.iterrows():
         values = [str(row[column]) for column in headers]
         lines.append("| " + " | ".join(values) + " |")
-
-
-
 
     lines.extend(
         [
@@ -811,9 +743,7 @@ def generate_report(
 
 def main() -> None:
     """Command-line interface."""
-    parser = argparse.ArgumentParser(
-        description="Generate MiBici FinOps cost estimates."
-    )
+    parser = argparse.ArgumentParser(description="Generate MiBici FinOps cost estimates.")
 
     parser.add_argument(
         "--prices",
@@ -850,7 +780,6 @@ def main() -> None:
         help="Daily inference volume",
     )
 
-
     parser.add_argument(
         "--e3",
         action="store_true",
@@ -860,11 +789,7 @@ def main() -> None:
     parser.add_argument(
         "--load-test-dir",
         type=Path,
-        default=(
-            Path(__file__).resolve().parents[2]
-            / "reports"
-            / "load_test"
-        ),
+        default=(Path(__file__).resolve().parents[2] / "reports" / "load_test"),
         help="Directory containing M3/E1 load-test results",
     )
 
@@ -888,20 +813,14 @@ def main() -> None:
     print(dataframe.to_string(index=False))
 
     if args.e3:
-
-
         e3_dataframe = build_e3_finops_report(
             load_test_dir=args.load_test_dir,
             price_per_hour=args.e3_price_per_hour,
         )
 
-        e3_csv_path = (
-            args.output_dir / "e3_finops.csv"
-        )
+        e3_csv_path = args.output_dir / "e3_finops.csv"
 
-        e3_md_path = (
-            args.output_dir / "e3_finops.md"
-        )
+        e3_md_path = args.output_dir / "e3_finops.md"
 
         e3_dataframe.to_csv(
             e3_csv_path,
@@ -915,16 +834,11 @@ def main() -> None:
 
         print("\nReporte E3:")
         print(e3_dataframe.to_string(index=False))
-        print(
-            f"\nE3 CSV generado en: {e3_csv_path}"
-        )
-        print(
-            f"E3 Markdown generado en: {e3_md_path}"
-        )
+        print(f"\nE3 CSV generado en: {e3_csv_path}")
+        print(f"E3 Markdown generado en: {e3_md_path}")
 
-    print(
-        f"\nReportes generados en: {args.output_dir}"
-    )   
+    print(f"\nReportes generados en: {args.output_dir}")
+
 
 if __name__ == "__main__":
     main()
