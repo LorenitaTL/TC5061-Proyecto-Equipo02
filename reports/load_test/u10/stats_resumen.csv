@@ -1,0 +1,3 @@
+contenedor,cpu_pct_prom,cpu_pct_p95,mem_mib_prom,mem_mib_p95,mem_limite_mib
+mibici-api-1,15.669130434782607,52.3475,223.8978260869565,223.8,1024.0
+mibici-mlflow-1,9.20021739130435,41.6225,1002.6304347826087,1005.0,1024.0
