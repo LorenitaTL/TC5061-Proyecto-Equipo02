@@ -2181,13 +2181,100 @@ Los resultados completos están disponibles en `reports/load_test/`. Cada escena
 
 Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
 
-_Pendiente._
+El consumo de recursos se midió durante los mismos escenarios de carga de Locust (u10, u50 y u100) mediante `docker stats`. La captura se realiza cada 2 segundos y se almacena en `stats.jsonl`. El módulo `mi_bici/operations/resource_stats.py` convierte estas muestras a valores numéricos y genera un resumen por contenedor con promedio y percentil 95 (P95) de CPU y memoria.
+
+Los límites configurados para los servicios son de **1 CPU y 1 GiB de memoria por contenedor**, por lo que estos valores representan la capacidad de referencia utilizada durante las pruebas.
+
+#### Resultados
+
+| Escenario | Contenedor | CPU promedio | CPU P95 | Memoria promedio (MiB) | Memoria P95 (MiB) | Límite (MiB) |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| u10 | `mibici-api-1` | 15.67 % | 52.35 % | 223.90 | 223.80 | 1,024 |
+| u50 | `mibici-api-1` | 66.30 % | 94.81 % | 232.93 | 243.68 | 1,024 |
+| u100 | `mibici-api-1` | 93.05 % | 107.21 % | 241.87 | 253.18 | 1,024 |
+| u10 | `mibici-mlflow-1` | 9.20 % | 41.62 % | 1,002.63 | 1,005.00 | 1,024 |
+| u50 | `mibici-mlflow-1` | 9.97 % | 42.26 % | 1,003.18 | 1,012.80 | 1,024 |
+| u100 | `mibici-mlflow-1` | 10.32 % | 50.89 % | 1,003.09 | 1,010.80 | 1,024 |
+
+Las muestras completas y los resúmenes por escenario se encuentran en `reports/load_test/<escenario>/stats.jsonl` y `stats_resumen.csv`. Las gráficas generadas por el análisis se encuentran en la carpeta `figures/` de cada escenario.
+
+#### Interpretación
+
+El principal recurso limitante de la API es la **CPU**. Su consumo promedio aumenta de 15.67 % en u10 a 66.30 % en u50 y 93.05 % en u100. El CPU P95 alcanza 107.21 % en u100, lo que indica que el servicio llega a su límite de procesamiento bajo la configuración evaluada.
+
+En contraste, la memoria de la API permanece relativamente estable, entre aproximadamente 224 y 242 MiB en promedio. Por lo tanto, aumentar la memoria de la API no aparece como la primera optimización necesaria a partir de estas mediciones.
+
+MLflow presenta un comportamiento diferente: su CPU permanece alrededor de 9–10 %, pero su consumo de memoria se mantiene cerca del límite de 1 GiB en los tres escenarios. Esto representa un riesgo de capacidad que debe considerarse antes de una operación productiva. Sin embargo, con los datos disponibles no se puede atribuir directamente la degradación de latencia de la API al consumo de memoria de MLflow.
+
+Los resultados de recursos son consistentes con los resultados de carga: al pasar de u50 a u100, el throughput solamente aumenta de 27.88 a 29.68 RPS, mientras que el P95 aumenta de 620 ms a 2,500 ms. Esto confirma que el sistema se aproxima a una zona de saturación alrededor de 30 RPS.
 
 ### Análisis FinOps
 
 Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96).
 
-_Pendiente._
+El análisis FinOps relaciona el costo de infraestructura con la capacidad observada durante las pruebas de carga. Los precios de referencia se almacenan en `references/finops_precios.json` y el cálculo se implementa en `mi_bici/operations/finops.py`.
+
+#### Supuestos de volumen
+
+Para dimensionar el consumo se utilizaron **374 estaciones**, correspondientes al periodo de prueba de 2026. Se asumió una predicción horaria por estación:
+
+**374 estaciones × 24 predicciones/día = 8,976 inferencias/día.**
+
+Este volumen es un **supuesto de dimensionamiento** para el análisis FinOps y no representa un volumen oficial declarado por MiBici.
+
+Se evaluó además un escenario de estrés de 10×:
+
+**8,976 × 10 = 89,760 inferencias/día.**
+
+El volumen de estrés equivale a un requerimiento promedio de aproximadamente **1.039 RPS** si las predicciones se distribuyen uniformemente durante las 24 horas.
+
+#### Precios de referencia
+
+Se utilizó como referencia una instancia **AWS EC2 t3.medium**, con un precio de **0.0416 USD/h**, 2 vCPU y 4 GB de memoria. El cálculo de costo 24/7 utiliza 730 horas mensuales.
+
+El análisis también incluye referencias para AWS `c6i.large` y GCP `e2-standard-2` en `references/finops_precios.json`.
+
+Estos precios son referencias de infraestructura y no incluyen almacenamiento, transferencia de datos, impuestos ni otros servicios.
+
+#### Costo según capacidad medida
+
+| Escenario | RPS medido | P95 (ms) | CPU promedio | Costo/inferencia (USD) | Costo/1,000 inferencias (USD) | Costo mensual 10× (USD) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| u10 | 6.2148 | 50 | 15.67 % | 0.00000186 | 0.001859 | 5.0069 |
+| u50 | 27.8751 | 620 | 66.30 % | 0.00000041 | 0.000415 | 1.1163 |
+| u100 | 29.6759 | 2,500 | 93.05 % | 0.00000039 | 0.000389 | 1.0486 |
+
+El costo unitario disminuye al aumentar la utilización porque el costo fijo de la instancia se distribuye entre un mayor número de inferencias. Sin embargo, el menor costo unitario no implica que el escenario de mayor carga sea el más conveniente operacionalmente.
+
+El escenario u100 presenta el menor costo por inferencia, pero también utiliza aproximadamente 93 % de CPU promedio y alcanza un P95 de 2.5 segundos. Entre u50 y u100, el throughput aumenta solamente alrededor de **6.5 %**, mientras que el P95 aumenta aproximadamente **303 %**. Por lo tanto, incrementar la carga sobre la configuración actual produce una mejora marginal de capacidad a cambio de una degradación considerable de latencia.
+
+#### Escalabilidad
+
+Para el escenario de estrés de 10× se requiere aproximadamente **1.039 RPS promedio**, por lo que matemáticamente una réplica es suficiente al comparar ese requerimiento con cualquiera de los RPS medidos.
+
+Este resultado debe interpretarse únicamente como un cálculo de capacidad promedio. **No significa que una sola réplica sea suficiente para producción**, ya que las pruebas muestran que una réplica comienza a saturarse alrededor de 30 RPS y que la latencia aumenta significativamente al acercarse a ese límite.
+
+El costo de mantener una instancia encendida 24/7 a 0.0416 USD/h es aproximadamente:
+
+**0.0416 × 730 = 30.368 USD/mes.**
+
+Por ello, el costo basado en volumen y el costo de mantener infraestructura encendida deben analizarse por separado.
+
+#### Oportunidades de optimización
+
+A partir de las mediciones obtenidas, las principales oportunidades son:
+
+1. **Optimizar CPU de la API.** Es el principal recurso limitante observado. El incremento de CPU de 66.3 % a 93.1 % entre u50 y u100 coincide con la pérdida de escalabilidad del throughput.
+
+2. **Evaluar escalamiento horizontal.** Debido a que la API es stateless, se pueden utilizar varias réplicas detrás de un balanceador. Esto permitiría aumentar la capacidad disponible sin depender de una única instancia saturada.
+
+3. **Revisar la configuración de memoria de MLflow.** MLflow utiliza aproximadamente 1 GiB de memoria en los escenarios evaluados, muy cerca del límite configurado. Aunque no se demostró que sea la causa de la latencia de la API, esta presión de memoria representa un riesgo operacional.
+
+4. **Evitar sobredimensionamiento permanente.** El volumen estimado de 10× requiere solamente alrededor de 1.039 RPS promedio. Si la demanda no es continua, puede evaluarse un esquema de escalamiento bajo demanda en lugar de mantener múltiples réplicas encendidas permanentemente.
+
+5. **Optimizar con base en el SLO, no solamente en costo unitario.** u100 tiene el menor costo por inferencia, pero presenta una latencia P95 de 2.5 segundos. Una configuración como u50 ofrece un mejor compromiso entre utilización de CPU, capacidad y latencia dentro de las condiciones de esta prueba.
+
+Los resultados completos del cálculo se encuentran en `reports/finops/e3_finops.csv` y `reports/finops/e3_finops.md`.
 
 ### Trabajo colaborativo
 
