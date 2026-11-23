@@ -4,7 +4,8 @@
 #   1. GET /health answers 200 with model_loaded: true.
 #   2. POST /predict answers 200 with a valid prediction.
 # The payload is generated inside the api container (it already has mi_bici installed),
-# so the runner only needs curl and python3.
+# so the runner only needs curl and python3. Its stderr is not hidden: if the container or
+# the import fails, the cause appears in the job log.
 #
 #   API_URL=http://127.0.0.1:8000 bash .github/scripts/smoke.sh
 set -euo pipefail
@@ -25,7 +26,7 @@ payload="$(docker compose exec -T api python -c "
 import json, random
 from mi_bici.operations.load_payloads import make_payload
 print(json.dumps(make_payload(random.Random(42))))
-" 2>/dev/null)"
+")"
 body="$(curl --fail --silent --show-error -X POST "$API_URL/predict" \
   -H 'Content-Type: application/json' -d "$payload")"
 echo "$body"
