@@ -1,0 +1,4 @@
+provider,instancia,region,vcpu,memory_gb,precio_usd_h,rps,utilizacion,costo_inferencia_usd,costo_1k_usd,costo_mensual_usd,replicas_10_rps
+AWS,t3.medium,us-east-1,2,4,0.0416,10.0,0.7,1.6507936507936508e-06,0.0016507936507936507,0.049523809523809526,2
+AWS,c6i.large,us-east-1,2,4,0.085,10.0,0.7,3.3730158730158734e-06,0.0033730158730158736,0.1011904761904762,2
+GCP,e2-standard-2,us-central1,2,8,0.067,10.0,0.7,2.658730158730159e-06,0.002658730158730159,0.07976190476190477,2
