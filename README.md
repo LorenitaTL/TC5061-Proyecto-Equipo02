@@ -695,7 +695,7 @@ La exploración y la selección del modelo están en
 | Conjunto | Periodo | Estaciones |
 | --- | --- | ---: |
 | Entrenamiento | 2025-01 a 2025-12 | 368 |
-| Prueba | 2026-01 a 2026-06 | 374 |
+| Prueba | 2026-01 a 2026-06 | 480 |
 
 - Los perfiles y el recorte de `share_fin_semana` en su percentil 99 se calculan solo con
   entrenamiento. Los meses de prueba no participan en el ajuste.
@@ -2216,21 +2216,21 @@ El análisis FinOps relaciona el costo de infraestructura con la capacidad obser
 
 #### Supuestos de volumen
 
-Para dimensionar el consumo se utilizaron **374 estaciones**, correspondientes al periodo de prueba de 2026. Se asumió una predicción horaria por estación:
+Para dimensionar el consumo se utilizaron **480 estaciones**, correspondientes al periodo de prueba de 2026. Se asumió una predicción horaria por estación:
 
-**374 estaciones × 24 predicciones/día = 8,976 inferencias/día.**
+**480 estaciones × 24 predicciones/día = 11,520 inferencias/día.**
 
 Este volumen es un **supuesto de dimensionamiento** para el análisis FinOps y no representa un volumen oficial declarado por MiBici.
 
 Se evaluó además un escenario de estrés de 10×:
 
-**8,976 × 10 = 89,760 inferencias/día.**
+**11,520 × 10 = 115,200 inferencias/día.**
 
-El volumen de estrés equivale a un requerimiento promedio de aproximadamente **1.039 RPS** si las predicciones se distribuyen uniformemente durante las 24 horas.
+El volumen de estrés equivale a un requerimiento promedio de aproximadamente **1.333 RPS** si las predicciones se distribuyen uniformemente durante las 24 horas.
 
 #### Precios de referencia
 
-Se utilizó como referencia una instancia **AWS EC2 t3.medium**, con un precio de **0.0416 USD/h**, 2 vCPU y 4 GB de memoria. El cálculo de costo 24/7 utiliza 730 horas mensuales.
+Las pruebas de carga y consumo de recursos se realizaron en el entorno Docker definido para la actividad, utilizando límites de **1 vCPU y 1 GiB de memoria por contenedor**. Para el análisis FinOps se utilizó una instancia **AWS EC2 t3.medium** únicamente como **referencia de precio de infraestructura**, con un precio de **0.0416 USD/h**, 2 vCPU y 4 GB de memoria. La t3.medium no representa la configuración sobre la cual se ejecutaron las pruebas de carga; por lo tanto, el RPS medido corresponde al entorno experimental y no al rendimiento de una instancia t3.medium. El cálculo de costo 24/7 utiliza 730 horas mensuales.
 
 El análisis también incluye referencias para AWS `c6i.large` y GCP `e2-standard-2` en `references/finops_precios.json`.
 
@@ -2240,9 +2240,9 @@ Estos precios son referencias de infraestructura y no incluyen almacenamiento, t
 
 | Escenario | RPS medido | P95 (ms) | CPU promedio | Costo/inferencia (USD) | Costo/1,000 inferencias (USD) | Costo mensual 10× (USD) |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| u10 | 6.2148 | 50 | 15.67 % | 0.00000186 | 0.001859 | 5.0069 |
-| u50 | 27.8751 | 620 | 66.30 % | 0.00000041 | 0.000415 | 1.1163 |
-| u100 | 29.6759 | 2,500 | 93.05 % | 0.00000039 | 0.000389 | 1.0486 |
+| u10 | 6.2148 | 50 | 15.67 % | 0.00000186 | 0.001859 | 6.4260 |
+| u50 | 27.8751 | 620 | 66.30 % | 0.00000041 | 0.000415 | 1.4327 |
+| u100 | 29.6759 | 2,500 | 93.05 % | 0.00000039 | 0.000389 | 1.3457 |
 
 El costo unitario disminuye al aumentar la utilización porque el costo fijo de la instancia se distribuye entre un mayor número de inferencias. Sin embargo, el menor costo unitario no implica que el escenario de mayor carga sea el más conveniente operacionalmente.
 
@@ -2250,7 +2250,7 @@ El escenario u100 presenta el menor costo por inferencia, pero también utiliza 
 
 #### Escalabilidad
 
-Para el escenario de estrés de 10× se requiere aproximadamente **1.039 RPS promedio**, por lo que matemáticamente una réplica es suficiente al comparar ese requerimiento con cualquiera de los RPS medidos.
+Para el escenario de estrés de 10× se requiere aproximadamente **1.333 RPS promedio**, por lo que matemáticamente una réplica es suficiente al comparar ese requerimiento con cualquiera de los RPS medidos.
 
 Este resultado debe interpretarse únicamente como un cálculo de capacidad promedio. **No significa que una sola réplica sea suficiente para producción**, ya que las pruebas muestran que una réplica comienza a saturarse alrededor de 30 RPS y que la latencia aumenta significativamente al acercarse a ese límite.
 
@@ -2270,7 +2270,7 @@ A partir de las mediciones obtenidas, las principales oportunidades son:
 
 3. **Revisar la configuración de memoria de MLflow.** MLflow utiliza aproximadamente 1 GiB de memoria en los escenarios evaluados, muy cerca del límite configurado. Aunque no se demostró que sea la causa de la latencia de la API, esta presión de memoria representa un riesgo operacional.
 
-4. **Evitar sobredimensionamiento permanente.** El volumen estimado de 10× requiere solamente alrededor de 1.039 RPS promedio. Si la demanda no es continua, puede evaluarse un esquema de escalamiento bajo demanda en lugar de mantener múltiples réplicas encendidas permanentemente.
+4. **Evitar sobredimensionamiento permanente.** El volumen estimado de 10× requiere solamente alrededor de 1.333 RPS promedio. Si la demanda no es continua, puede evaluarse un esquema de escalamiento bajo demanda en lugar de mantener múltiples réplicas encendidas permanentemente.
 
 5. **Optimizar con base en el SLO, no solamente en costo unitario.** u100 tiene el menor costo por inferencia, pero presenta una latencia P95 de 2.5 segundos. Una configuración como u50 ofrece un mejor compromiso entre utilización de CPU, capacidad y latencia dentro de las condiciones de esta prueba.
 

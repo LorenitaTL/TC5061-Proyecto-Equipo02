@@ -2,11 +2,11 @@
 
 ## Supuestos
 
-- Estaciones de referencia: **374**
+- Estaciones de referencia: **480**
 - Predicciones por estación: **24/día**
-- Volumen de referencia: **8,976 inferencias/día**
+- Volumen de referencia: **11,520 inferencias/día**
 - Escenario de estrés: **10x**
-- Volumen de estrés: **89,760 inferencias/día**
+- Volumen de estrés: **115,200 inferencias/día**
 - Días por mes: **30**
 - Horas de operación mensual para costo 24/7: **730 h**
 - Moneda: **USD**
@@ -22,25 +22,25 @@
 
 ## Análisis FinOps
 
-El volumen de referencia corresponde a 374 estaciones con una predicción horaria por estación:
+El volumen de referencia corresponde a 480 estaciones con una predicción horaria por estación:
 
-**374 × 24 = 8,976 inferencias/día.**
+**480 × 24 = 11,520 inferencias/día.**
 
 Para el escenario de estrés de 10x:
 
-**8,976 × 10 = 89,760 inferencias/día.**
+**11,520 × 10 = 115,200 inferencias/día.**
 
 El RPS promedio requerido para procesar este volumen continuamente durante 24 horas es aproximadamente:
 
-**89,760 / 86,400 = 1.0389 RPS.**
+**115,200 / 86,400 = 1.3333 RPS.**
 
 Las réplicas necesarias se calculan comparando este RPS objetivo con el RPS medido experimentalmente para cada escenario de carga.
 
 | escenario | rps | target_rps_10x | replicas_10x | costo_inferencia_usd | costo_1000_usd | costo_mes_10x_usd | costo_24x7_mes_usd |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| u10 | 6.214781 | 1.038889 | 1 | 0.00000186 | 0.001859 | 5.006902 | 30.368000 |
-| u50 | 27.875052 | 1.038889 | 1 | 0.00000041 | 0.000415 | 1.116296 | 30.368000 |
-| u100 | 29.675852 | 1.038889 | 1 | 0.00000039 | 0.000389 | 1.048556 | 30.368000 |
+| u10 | 6.214781 | 1.333333 | 1 | 0.00000186 | 0.001859 | 6.425971 | 30.368000 |
+| u50 | 27.875052 | 1.333333 | 1 | 0.00000041 | 0.000415 | 1.432679 | 30.368000 |
+| u100 | 29.675852 | 1.333333 | 1 | 0.00000039 | 0.000389 | 1.345741 | 30.368000 |
 
 ## Interpretación
 
@@ -60,6 +60,6 @@ El consumo de memoria de la API permanece relativamente estable, alrededor de 22
 
 El contenedor de MLflow presenta un consumo de memoria cercano al límite configurado de 1 GiB. Esto representa un riesgo de capacidad que debe considerarse en futuras optimizaciones, aunque los datos disponibles no permiten atribuirle directamente la latencia observada en la API.
 
-El volumen de 8,976 inferencias/día es un supuesto de dimensionamiento basado en 374 estaciones y una predicción horaria por estación; no representa un volumen oficial declarado por MiBici.
+El volumen de 11,520 inferencias/día es un supuesto de dimensionamiento basado en 480 estaciones y una predicción horaria por estación; no representa un volumen oficial declarado por MiBici.
 
 El cálculo de costo 24/7 representa el costo de mantener las réplicas encendidas durante 730 horas mensuales. El costo por inferencia representa una métrica de eficiencia basada en el RPS medido y no debe interpretarse como el costo de una instancia encendida continuamente.

@@ -249,7 +249,7 @@ def monthly_instance_cost(
 def build_e3_finops_report(
     load_test_dir: Path = DEFAULT_LOAD_TEST_DIR,
     price_per_hour: float = 0.0416,
-    daily_volume: int = 8976,
+    daily_volume: int = 11520,
     stress_multiplier: float = 10.0,
     utilization: float = 1.0,
 ) -> pd.DataFrame:
@@ -261,7 +261,7 @@ def build_e3_finops_report(
         estaciones * predicciones por estación por día
 
     Para este proyecto:
-        374 estaciones * 24 predicciones/día = 8,976 inferencias/día
+        480 estaciones * 24 predicciones/día = 11,520 inferencias/día
 
     El escenario de estrés utiliza 10x ese volumen.
 
@@ -379,11 +379,11 @@ def write_e3_markdown_report(
         "",
         "## Supuestos",
         "",
-        "- Estaciones de referencia: **374**",
+        "- Estaciones de referencia: **480**",
         "- Predicciones por estación: **24/día**",
-        "- Volumen de referencia: **8,976 inferencias/día**",
+        "- Volumen de referencia: **11,520 inferencias/día**",
         "- Escenario de estrés: **10x**",
-        "- Volumen de estrés: **89,760 inferencias/día**",
+        "- Volumen de estrés: **115,200 inferencias/día**",
         "- Días por mes: **30**",
         "- Horas de operación mensual para costo 24/7: **730 h**",
         "- Moneda: **USD**",
@@ -442,22 +442,22 @@ def write_e3_markdown_report(
             "## Análisis FinOps",
             "",
             (
-                "El volumen de referencia corresponde a 374 estaciones "
+                "El volumen de referencia corresponde a 480 estaciones "
                 "con una predicción horaria por estación:"
             ),
             "",
-            "**374 × 24 = 8,976 inferencias/día.**",
+            "**480 × 24 = 11,520 inferencias/día.**",
             "",
             "Para el escenario de estrés de 10x:",
             "",
-            "**8,976 × 10 = 89,760 inferencias/día.**",
+            "**11,520 × 10 = 115,200 inferencias/día.**",
             "",
             (
                 "El RPS promedio requerido para procesar este volumen "
                 "continuamente durante 24 horas es aproximadamente:"
             ),
             "",
-            "**89,760 / 86,400 = 1.0389 RPS.**",
+            "**115,200 / 86,400 = 1.3333 RPS.**",
             "",
             (
                 "Las réplicas necesarias se calculan comparando este "
@@ -561,8 +561,8 @@ def write_e3_markdown_report(
             ),
             "",
             (
-                "El volumen de 8,976 inferencias/día es un supuesto "
-                "de dimensionamiento basado en 374 estaciones y "
+                "El volumen de 11,520 inferencias/día es un supuesto "
+                "de dimensionamiento basado en 480 estaciones y "
                 "una predicción horaria por estación; no representa "
                 "un volumen oficial declarado por MiBici."
             ),
