@@ -1,0 +1,211 @@
+name: ci-cd
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A new push to the same branch or PR cancels the run that is still in progress
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs the test suite with coverage on the three OSes the team uses
+  ci-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - run: python -m pip install -r requirements.txt
+
+      - name: Run tests with coverage
+        run: >
+          python -m pytest tests
+          --cov=mi_bici
+          --cov-report=term-missing
+          --cov-report=xml:coverage.xml
+          --cov-report=html:htmlcov
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.os }}
+          path: |
+            coverage.xml
+            htmlcov/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Builds the API image after the tests pass on every OS and publishes it to GHCR
+  # (Packages), tagged with the commit SHA. Buildx layers are cached in GitHub Actions.
+  # A PR from a fork cannot write packages, so there the image is only built.
+  image:
+    needs: ci-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+      pushed: ${{ env.PUSH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR only accepts lowercase names (contract: ghcr.io/lorenitatl/tc5061-proyecto-equipo02/mibici-api)
+      - name: Image name
+        id: name
+        shell: bash
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"
+          echo "image=ghcr.io/${repo}/mibici-api:sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "repo=ghcr.io/${repo}/mibici-api" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: env.PUSH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # sha-<commit> always; the branch name too, and latest only on main
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.name.outputs.repo }}
+          tags: |
+            type=raw,value=sha-${{ github.sha }}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Brings up the whole system (mlflow -> seed -> api) with the published image and checks
+  # that it serves predictions: /health with the model loaded, POST /predict and a short
+  # Locust run. The volume is deleted at the end so every run starts from the seed model.
+  compose:
+    needs: image
+    if: needs.image.outputs.pushed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    env:
+      API_IMAGE: ${{ needs.image.outputs.image }}
+      API_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # mlflow and seed use pull_policy: never, so the image must be local before `up`
+      - name: Pull image
+        run: docker pull "$API_IMAGE"
+
+      # --wait returns once mlflow and api are healthy; the api healthcheck requires
+      # model_loaded: true, so it fails if the seed model did not load
+      - name: Start system
+        run: docker compose up -d --no-build --wait --wait-timeout 300
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements-load.txt
+            requirements.txt
+
+      # The locustfile imports mi_bici.operations.load_payloads, and mi_bici imports
+      # config (python-dotenv, loguru); the full requirements.txt is not needed
+      - name: Install load test dependencies
+        run: |
+          python -m pip install -r requirements-load.txt \
+            "$(grep '^python-dotenv==' requirements.txt)" \
+            "$(grep '^loguru==' requirements.txt)"
+          echo "PYTHONPATH=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+
+      - name: Smoke test GET /health
+        run: |
+          body="$(curl --fail --silent --show-error "$API_URL/health")"
+          echo "$body"
+          echo "$body" | python -c "import json, sys; assert json.load(sys.stdin)['model_loaded'] is True, 'model_loaded is not true'"
+
+      - name: Smoke test POST /predict
+        run: |
+          payload="$(python -c "import json, random; from mi_bici.operations.load_payloads import make_payload; print(json.dumps(make_payload(random.Random(42))))")"
+          body="$(curl --fail --silent --show-error -X POST "$API_URL/predict" \
+            -H 'Content-Type: application/json' -d "$payload")"
+          echo "$body"
+          echo "$body" | python -c "
+          import json, sys
+          r = json.load(sys.stdin)
+          assert 0 <= r['risk_probability'] <= 1, r
+          assert r['risk_label'] in ('alto', 'bajo'), r
+          assert r['model_name'] and r['model_version'], r
+          "
+
+      - name: Locust headless (30 s)
+        run: |
+          if [ ! -f load_tests/locustfile.py ]; then
+            echo "load_tests/locustfile.py does not exist; skipping"; exit 0
+          fi
+          mkdir -p reports/load_test/ci
+          python -m locust -f load_tests/locustfile.py --headless --only-summary \
+            -u 10 -r 2 -t 30s --host "$API_URL" --csv reports/load_test/ci/locust
+
+      - name: Upload Locust results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-ci
+          path: reports/load_test/ci/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Compose logs
+        if: always()
+        run: |
+          docker compose ps -a
+          docker compose logs --timestamps --no-color
+
+      - name: Stop system
+        if: always()
+        run: docker compose down -v
