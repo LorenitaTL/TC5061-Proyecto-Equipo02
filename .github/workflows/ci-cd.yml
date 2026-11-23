@@ -249,9 +249,11 @@ jobs:
         run: docker compose down -v
 
   # Always runs: writes the result and duration of every job and the image tag to the run
-  # summary, and posts the same table on the PR (it edits its previous comment instead of
-  # adding a new one). On pull_request the PR comes from the event; on push and
-  # workflow_dispatch, from the PR associated with the commit.
+  # summary, and posts the same table on the PR. There is one comment per event type
+  # (pull_request, workflow_dispatch, push), found by a hidden marker and edited on the next
+  # run of that event, so a pull_request run never overwrites a workflow_dispatch result.
+  # On pull_request the PR comes from the event; on push and workflow_dispatch, from the PR
+  # associated with the commit.
   notify:
     needs: [ci-tests, image, compose, publish, deploy]
     if: always()
@@ -267,13 +269,15 @@ jobs:
       IMAGE: ${{ needs.publish.outputs.image }}
       IMAGE_TAGS: ${{ needs.publish.outputs.tags }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
+      # On pull_request, GITHUB_SHA is the temporary merge commit; show the PR head instead
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
     steps:
       - name: Build summary
         run: |
           run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           {
-            echo "## ci-cd · ${GITHUB_SHA::7} · $GITHUB_EVENT_NAME"
+            echo "## ci-cd · ${HEAD_SHA::7} · $GITHUB_EVENT_NAME"
             echo
             echo "| Job | Resultado | Duración |"
             echo "| :--- | :--- | ---: |"
@@ -281,15 +285,24 @@ jobs:
               --paginate --jq '.jobs[] | select(.name != "notify") | [.name, (.conclusion // .status), .started_at, .completed_at] | @tsv' |
             while IFS=$'\t' read -r name result started completed; do
               case "$result" in
-                success) icon="✅" ;; failure) icon="❌" ;; cancelled) icon="⛔" ;; skipped) icon="⏭️" ;; *) icon="•" ;;
+                success) label="✅ success" ;; failure) label="❌ failure" ;; cancelled) label="⛔ cancelled" ;; *) label="• $result" ;;
               esac
+              # publish and deploy are skipped on purpose outside push to main and workflow_dispatch;
+              # any other skip means an earlier job failed
+              if [ "$result" = "skipped" ]; then
+                if { [ "$name" = "publish" ] || [ "$name" = "deploy" ]; } && [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+                  label="⏭️ omitido (solo en push a main o workflow_dispatch)"
+                else
+                  label="⏭️ omitido (falló un job previo)"
+                fi
+              fi
               if [ "$result" = "skipped" ] || [ -z "$completed" ] || [ "$completed" = "null" ]; then
                 duration="—"
               else
                 s=$(( $(date -d "$completed" +%s) - $(date -d "$started" +%s) ))
                 duration="$((s / 60))m $((s % 60))s"
               fi
-              echo "| \`$name\` | $icon $result | $duration |"
+              echo "| \`$name\` | $label | $duration |"
             done
             echo
             if [ -n "$IMAGE" ]; then
@@ -317,4 +330,13 @@ jobs:
           if [ -z "$pr" ]; then
             echo "No PR is associated with $GITHUB_SHA; skipping the comment"; exit 0
           fi
-          gh pr comment "$pr" --body-file summary.md --edit-last --create-if-none
+          marker="<!-- ci-cd:$GITHUB_EVENT_NAME -->"
+          { echo "$marker"; echo; cat summary.md; } > comment.md
+          id="$(gh api "repos/$GITHUB_REPOSITORY/issues/$pr/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id" | tail -n 1)"
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md > /dev/null
+            echo "Updated comment $id on PR #$pr"
+          else
+            gh pr comment "$pr" --body-file comment.md
+          fi
