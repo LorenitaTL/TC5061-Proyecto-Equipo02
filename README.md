@@ -567,6 +567,10 @@ el commit, la versión de los datos y los hiperparámetros del modelo:
 
 ![Linaje de la versión champion de P2 en el Model Registry](reports/figures/evidencia/mlflow_p2_champion_linaje.png)
 
+Los valores confirmados del champion (versión, run, commit, datos, umbral y métricas) están en
+la [ficha del champion](docs/p2_ficha_champion.md), y su uso previsto, limitaciones, monitoreo
+y regla de promoción en el [Model Card de P2](docs/model_card_p2.md).
+
 #### Candidata B para el A/B testing
 
 Para comparar contra la versión vigente (A, alias `champion`) se entrena una segunda versión
@@ -1663,13 +1667,31 @@ El servicio utiliza el modelo de **clasificación de riesgo operacional de P2**,
 
 ### Modelo utilizado
 
+El champion de P2 está documentado en una sola fuente de verdad, la
+[ficha del champion](docs/p2_ficha_champion.md), y su uso, límites y gobernanza en el
+[Model Card de P2](docs/model_card_p2.md). Resumen:
+
 - **Modelo:** `mibici-equipo02-p2-riesgo`
-- **Tipo:** Regresión Logística
+- **Tipo:** HistGradientBoosting (pipeline `SimpleImputer` → `StandardScaler` → clasificador)
 - **Problema:** Clasificación binaria de riesgo operacional
-- **Versión registrada:** `5`
+- **Versión champion:** `1` del Registry compartido (run `55d8255b3272402ea2532729ec2b1629`);
+  la versión 2 fue el challenger del A/B y se rechazó
 - **Alias:** `champion`
 - **Número de variables de entrada:** `30`
 - **Umbral de clasificación:** `0.35`
+
+El número de versión solo es válido en el Registry compartido: en el `mlflow.db` local de cada
+integrante o en el modelo semilla de Compose la versión puede ser otra. Para comprobar qué
+versión resuelve `champion` en el Registry que se esté usando, y que coincide con la ficha:
+
+```bash
+make champion-card-p2
+```
+
+El comando escribe `reports/p2_champion_registry.md` y termina con error si la versión es el
+modelo semilla sintético (`origen=seed-sintetico`), si no es HistGradientBoosting, si le falta
+`git_commit` o `data_version`, o si el umbral o los hiperparámetros no coinciden con
+`mi_bici/config.py`.
 
 El modelo utiliza las variables generadas por el pipeline de características de P2, incluyendo información de demanda, capacidad de las estaciones, flujo neto, variables temporales y características históricas (*lags* y *rolling windows*).
 
@@ -1691,7 +1713,7 @@ MLflow Model Registry
         ▼
 mibici-equipo02-p2-riesgo
         │
-        └── champion → versión 5
+        └── champion → versión 1 (Registry compartido)
                          │
                          ▼
                     Predictor P2
@@ -1730,6 +1752,12 @@ Como evidencia de la recuperación e inferencia se incluye:
 reports/figures/evidencia/e4_model_registry.png
 reports/figures/evidencia/e2_e3_inferencia_fila_real.png
 ```
+
+La captura `e4_model_registry.png` se tomó contra el `mlflow.db` local de Eduardo, donde
+`champion` apuntaba a la versión 5 de ese registro local. Demuestra la carga por alias y la
+lectura del umbral, pero su número de versión no es el del champion; la versión y el linaje
+del champion están en la [ficha](docs/p2_ficha_champion.md) y en
+`reports/figures/evidencia/mlflow_p2_champion_linaje.png`.
 
 ### Pruebas
 
@@ -1944,9 +1972,10 @@ cualquier entorno; no hay que reconstruirla para cambiar de modelo o de servidor
 **Entorno actual (local).** El servicio se ejecuta con Podman o Docker en la máquina de cada
 integrante, montando el `mlflow.db` y `mlartifacts/` locales (`make docker-run`, ver
 [Podman/Docker](#podmandocker)). Por eso la versión que responde depende del registro de
-quien lo ejecuta: en este README aparecen la versión 5 (registro de Eduardo, en
-[Modelo y MLflow](#modelo-y-mlflow)) y la 1 (registro local de la prueba en el contenedor),
-y los ejemplos del contrato usan valores ilustrativos. `/health` y cada respuesta de
+quien lo ejecuta. El champion real es la versión 1 del Registry compartido (ver la
+[ficha del champion](docs/p2_ficha_champion.md)); otros números, como la versión 5 de la
+evidencia E4, vienen de registros locales, y los ejemplos del contrato usan valores
+ilustrativos. `/health` y cada respuesta de
 `/predict` indican siempre el modelo y la versión que respondieron.
 
 **Estrategia para un entorno compartido.** Lo que cambiaría para pasar de local a un
