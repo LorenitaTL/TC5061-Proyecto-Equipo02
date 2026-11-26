@@ -197,6 +197,11 @@ docker-stop:
 COMPOSE ?= docker compose
 STATS_ENGINE ?= docker
 
+## Write reports/p2_champion_registry.md from the Model Registry and check it (fails on seed or mismatch)
+.PHONY: champion-card-p2
+champion-card-p2:
+	python -m mi_bici.modeling.champion_card_p2
+
 ## Start MLflow, the seed model and the API with one command (waits until healthy)
 .PHONY: compose-up
 compose-up:
