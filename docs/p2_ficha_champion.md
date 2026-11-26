@@ -12,8 +12,8 @@ Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96). Revis
 > Los valores de abajo se tomaron de las evidencias del Registry compartido
 > (`reports/figures/evidencia/mlflow_p2_champion_linaje.png` y
 > `mlflow_p2_ab_versiones.png`) y del resumen del A/B (`reports/ab_test_p2/ab_summary.json`).
-> Los hashes que en la captura salen cortados se completan copiando el valor que deja
-> `make champion-card-p2` en `reports/p2_champion_registry.md`.
+> Los hashes completos de `git_commit` y `data_version` se verificaron fuera del Registry: el
+> commit existe en el historial de Git y `data_version` se recalcula desde `references/data_manifest.json`.
 
 | Campo | Valor confirmado | Fuente |
 | :--- | :--- | :--- |
@@ -24,9 +24,9 @@ Responsable: [@Eduardo-Valencia96](https://github.com/Eduardo-Valencia96). Revis
 | Umbral de clasificación | `0.35` | Tag `classification_threshold`; `P2_CLASSIFICATION_THRESHOLD` en `mi_bici/config.py` |
 | Hiperparámetros | `learning_rate=0.1`, `max_iter=200`, `max_leaf_nodes=31`, `min_samples_leaf=20` | Tags de la versión; `P2_HGB_*` en `mi_bici/config.py` |
 | Run de origen | `55d8255b3272402ea2532729ec2b1629` (`P2-HistGradientBoosting-candidate`) | Tag `source_run_id` |
-| Commit | `cb67db696e9316e41e4dc20929f…` (completar desde `reports/p2_champion_registry.md`) | Tag `git_commit` |
-| Versión de datos | `198acbc4c315b252808c926b4…` (completar desde `reports/p2_champion_registry.md`) | Tag `data_version` |
-| Versión de features | `337f806ade6654cd1c21f42e0339…` | Tag `features_data_version` |
+| Commit | `cb67db696e9316e41e4dc20929f4511b5e99504c` | Tag `git_commit` (prefijo en la captura); el commit existe en Git: «fix: atender los comentarios del tutor pendientes en P2», 01/11/2026 20:28, 12 minutos antes del registro |
+| Versión de datos | `198acbc4c315b252808c926b4a7e165853610f487ff630d3087c4fd36401ee8d` | Tag `data_version` (prefijo en la captura); se reproduce con `get_data_version()` de `mi_bici/modeling/tracking.py` sobre `references/data_manifest.json` |
+| Versión de features | `337f806ade6654cd1c21f42e0339…` (prefijo visible en la captura; valor completo en el tag de la versión 1 del Registry compartido) | Tag `features_data_version`: SHA-256 de `data/processed/features_p2.parquet`. El archivo no está en Git y al regenerarse puede cambiar de bytes (por ejemplo, por la versión de pyarrow), así que una copia local puede tener otro hash aunque los datos de origen (`data_version`) sean los mismos |
 | Ventanas | Train 2025-01-01 → 2026-03-31; validation 2026-04-01 → 2026-05-31; test 2026-06-01 → 2026-06-30 | Tags `train_end=2026-04-01`, `validation_end=2026-06-01` |
 | Etiqueta Risk | `target_imbalance_ratio > 0.066667` (P80 de train, comparación estricta) | Tags `risk_percentile=0.8`, `risk_threshold` |
 | Origen | Entrenado con datos reales de MiBici (sin tag `origen=seed-sintetico`) | Tags de la versión |
