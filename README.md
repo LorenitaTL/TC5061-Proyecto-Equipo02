@@ -569,7 +569,8 @@ el commit, la versión de los datos y los hiperparámetros del modelo:
 
 Los valores confirmados del champion (versión, run, commit, datos, umbral y métricas) están en
 la [ficha del champion](docs/p2_ficha_champion.md), y su uso previsto, limitaciones, monitoreo
-y regla de promoción en el [Model Card de P2](docs/model_card_p2.md).
+y regla de promoción en el [Model Card de P2](docs/model_card_p2.md). Promover o revertir
+se hace con `make promote-p2 VERSION=<n>` y reiniciando la API.
 
 #### Candidata B para el A/B testing
 
@@ -1097,6 +1098,8 @@ equivalentes sin `make` están en
 | `make test` | Corre todas las pruebas de `tests/` con PyTest. |
 | `make coverage` | Corre las pruebas y reporta el % de cobertura de `mi_bici/` por módulo. |
 | `make validate-data` | Corre las suites de DeepChecks (integridad y drift) y genera los reportes en `reports/`. |
+| `make ab-test-p2` | Compara `@champion` contra `@challenger` de P2 con la prueba de significancia (reportes en `reports/ab_test_p2/`). |
+| `make promote-p2 VERSION=n` | Mueve `@champion` de P2 a la versión `n` (promover o revertir). Con `DRY_RUN=1` solo valida. Rechaza el modelo semilla y versiones sin linaje. |
 | `make test-validation` | Corre `tests/test_data_validation.py` en `.venv-validation`. |
 | `make security` | Corre bandit sobre `mi_bici/` y pip-audit sobre las dependencias. |
 
@@ -1500,11 +1503,16 @@ pruebas:
 make coverage
 ```
 
-Con todos los PRs de esta actividad, la suite tiene 149 pruebas en 22 archivos: 144 pasan y
-5 se omiten en el entorno principal porque requieren DeepChecks (corren en `.venv-validation`
-y en el job `validation` de CI). La cobertura de `mi_bici/` pasó de **28 % a 40 %**.
-También se quitaron `predict.py` y `plots.py`, que eran el código de ejemplo de la
-plantilla de cookiecutter y no se usaban.
+La suite está en `tests/` (36 archivos). Las pruebas de DeepChecks se omiten en el entorno
+principal porque requieren versiones antiguas de numpy y pandas; corren en `.venv-validation`
+y en el job `validation` de CI. El número de pruebas y el porcentaje de cobertura cambian con
+cada PR, así que no se fijan aquí: los valores vigentes están en el reporte `coverage-<os>`
+que el job `ci-tests` sube como artefacto en la
+[última corrida de GitHub Actions](https://github.com/LorenitaTL/TC5061-Proyecto-Equipo02/actions)
+y salen de `make coverage`. Se quitaron `predict.py` y `plots.py`, que eran el código de
+ejemplo de la plantilla de cookiecutter y no se usaban. La tabla siguiente muestra la
+cobertura relativa por módulo cuando se midió en la Actividad 7; sirve para ver dónde se
+concentran las pruebas, no como cifra actual.
 
 | Módulos | Cobertura | Por qué |
 | :--- | ---: | :--- |
