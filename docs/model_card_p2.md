@@ -152,14 +152,15 @@ es significativamente mayor (IC 95 % de ΔRecall > 0) y su F1 no es significativ
 
 **Promoción y reversión.** Se mueve el alias, no se registra de nuevo:
 
-```python
-from mlflow import MlflowClient
-
-MlflowClient().set_registered_model_alias("mibici-equipo02-p2-riesgo", "champion", "<versión>")
+```bash
+make promote-p2 VERSION=<versión> DRY_RUN=1   # valida sin mover el alias
+make promote-p2 VERSION=<versión>
 ```
 
-y se reinicia el contenedor de la API, que carga el modelo una sola vez al arrancar. Para
-revertir se devuelve `champion` a la versión anterior y se reinicia. Después de cualquier
+El comando rechaza versiones que no sean de P2, sin `git_commit` o `data_version`, o que sean
+el modelo semilla sintético, y comprueba que el alias quedó en la versión pedida. Después se
+reinicia el contenedor de la API, que carga el modelo una sola vez al arrancar. Para revertir
+se corre el mismo comando con la versión anterior (el comando la imprime) y se reinicia. Después de cualquier
 cambio se corre `make champion-card-p2` y se actualiza esta ficha.
 
 **Evidencia de revisión.** Cada cambio llega por PR con revisión de otro integrante y CI en

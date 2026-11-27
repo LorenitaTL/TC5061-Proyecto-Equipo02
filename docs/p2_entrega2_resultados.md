@@ -80,7 +80,7 @@ Se evaluaron además diferentes ablations para estudiar la importancia de las va
 
 ## Configuraciones y resultados de validación
 
-Se utilizó **Regresión Logística** como familia de modelo.
+En la Entrega 2 se utilizó **Regresión Logística** como familia de modelo. Es una iteración histórica: el modelo vigente es HistGradientBoosting con umbral de clasificación 0.35 (ver la nota inicial y la [ficha del champion](p2_ficha_champion.md)).
 
 | Modelo / experimento | Configuración | Validation Recall | Validation Precision | Validation F1 | Validation ROC-AUC |
 |---|---|---:|---:|---:|---:|
@@ -244,6 +244,8 @@ run(model, params)
 
 ## Model Registry
 
+> **Histórico:** la versión y el run de esta sección corresponden a la iteración de la Entrega 2 (Regresión Logística, registro local). El champion vigente es la versión 1 de HistGradientBoosting descrita en [p2_ficha_champion.md](p2_ficha_champion.md).
+
 El modelo seleccionado fue registrado en MLflow Model Registry con:
 
 - **Nombre:** `mibici-equipo02-p2-riesgo`
@@ -343,7 +345,9 @@ Estas dos nociones de umbral se mantienen separadas:
 - **Umbral de riesgo:** define qué observaciones son consideradas riesgo.
 - **Umbral de clasificación:** convierte la probabilidad estimada por el modelo en una predicción binaria.
 
-No se implementó un umbral alternativo de clasificación basado en validation, ya que la implementación actual utiliza la clasificación estándar de `scikit-learn` y el P80 del riesgo es un umbral distinto, utilizado para construir la variable objetivo.
+En la Entrega 2 no se implementó un umbral alternativo de clasificación basado en validation; se usaba la clasificación estándar de `scikit-learn`, y el P80 del riesgo es un umbral distinto, utilizado para construir la variable objetivo.
+
+**Actualización vigente:** el modelo final usa un umbral de clasificación de **0.35**, elegido en validation para cada familia como el de mejor F1 entre los que alcanzan precisión ≥ 0.50 (detalle en el [Model Card](model_card_p2.md)).
 
 ---
 
@@ -353,7 +357,7 @@ No se implementó un umbral alternativo de clasificación basado en validation, 
 - El umbral P80 depende de la distribución del `target_imbalance_ratio` en el conjunto de entrenamiento.
 - La selección de la candidata mejora Recall sólo ligeramente respecto al baseline.
 - La mejora de Recall no se interpreta como evidencia de significancia estadística.
-- La selección explícita de un umbral de clasificación basado únicamente en validation no está implementada.
+- (Resuelto después de la Entrega 2) El umbral de clasificación ya se selecciona en validation; el modelo vigente usa 0.35.
 - Los Run ID y números de versión pueden cambiar al reproducir el experimento en otro servidor MLflow.
 - La consolidación final del servidor MLflow y Registry depende de la infraestructura compartida del equipo.
 
@@ -386,10 +390,10 @@ No se implementó un umbral alternativo de clasificación basado en validation, 
 
 ## Conclusiones
 
-El experimento P2 implementa un modelo de clasificación de riesgo operacional para MiBici utilizando Regresión Logística y una partición temporal que evita utilizar información futura durante el entrenamiento.
+Conclusiones de la Entrega 2 (iteración histórica; el modelo vigente es HistGradientBoosting, ver la nota inicial). El experimento P2 implementó un modelo de clasificación de riesgo operacional para MiBici utilizando Regresión Logística y una partición temporal que evita utilizar información futura durante el entrenamiento.
 
 La selección se realizó sobre validation utilizando Recall como métrica primaria. La candidata seleccionada, que elimina las variables de desbalance actual y utiliza balanceo de clases, obtuvo un Recall de **0.7417 en validation** y **0.7313 en TEST**.
 
 El modelo se encuentra integrado con MLflow, incluyendo trazabilidad de configuración, métricas, firma, input example, registro del conjunto de entrenamiento mediante `mlflow.log_input(...)`, artefactos de evaluación y Model Registry. La candidata seleccionada se encuentra registrada como `mibici-equipo02-p2-riesgo` con alias `champion`.
 
-El modelo no utiliza un umbral alternativo de clasificación seleccionado exclusivamente sobre validation. El umbral P80 de **0.066667** corresponde a la definición del riesgo y se calcula únicamente sobre TRAIN.
+En esa iteración el modelo no usaba un umbral alternativo de clasificación seleccionado sobre validation (el modelo vigente usa 0.35). El umbral P80 de **0.066667** corresponde a la definición del riesgo y se calcula únicamente sobre TRAIN.
