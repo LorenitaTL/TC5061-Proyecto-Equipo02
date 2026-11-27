@@ -82,8 +82,9 @@ def main(
         return
     typer.echo(f"OK: {alias} pasó de v{previous} a v{version}.")
     typer.echo(f"Para revertir: make promote-p2 VERSION={previous}" if previous else "")
-    typer.echo("Reinicia la API (make compose-down && make compose-up) y corre "
-               "make champion-card-p2.")
+    typer.echo(
+        "Reinicia la API (make compose-down && make compose-up) y corre make champion-card-p2."
+    )
 
 
 if __name__ == "__main__":
