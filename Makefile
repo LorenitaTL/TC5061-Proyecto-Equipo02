@@ -202,6 +202,17 @@ STATS_ENGINE ?= docker
 champion-card-p2:
 	python -m mi_bici.modeling.champion_card_p2
 
+## Move @champion of P2 to another version: promote or revert (make promote-p2 VERSION=2 [DRY_RUN=1])
+.PHONY: promote-p2
+promote-p2:
+	@test -n "$(VERSION)" || (echo "Usage: make promote-p2 VERSION=<number> [DRY_RUN=1]"; exit 1)
+	python -m mi_bici.modeling.promote_p2 --version $(VERSION) $(if $(DRY_RUN),--dry-run,)
+
+## P2: compare @champion against @challenger on the June set (A/B test with significance)
+.PHONY: ab-test-p2
+ab-test-p2:
+	python -m mi_bici.monitoring.ab_test_p2 --model-a champion --model-b challenger
+
 ## Start MLflow, the seed model and the API with one command (waits until healthy)
 .PHONY: compose-up
 compose-up:
